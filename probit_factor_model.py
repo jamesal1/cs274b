@@ -59,28 +59,41 @@ def train_logistic(X, y):
 
 
 
-def train_logistic_torch(X, y, b = 0):
-
-    theta, _ = torch.gesv((X.t() @ y).view(-1, 1), X.t() @ X)
+def train_logistic_torch(X, y, b = 0, thetas= None,reg=1e-3):
+    # print("Mean y in train logistic is {}".format(torch.mean(y)))
+    if thetas is None:
+        theta, _ = torch.gesv((X.t() @ y).view(-1, 1), X.t() @ X)
+        if (theta != theta).any():
+            raise ValueError("NaN in logistic init")
+    else:
+        theta=thetas.clone()
     theta = theta.view(-1)
+
     weights = torch.FloatTensor(torch.ones(y.shape)).cuda()
-    print((torch.round(torch.sigmoid(X @ theta)) == y).sum())
+    #print((torch.round(torch.sigmoid(X @ theta)) == y).sum())
 
     for i in count():
 
-        new_theta = newtonIteration_torch(X, y, b, theta, weights)
+        new_theta = newtonIteration_torch(X, y, b, theta, weights,lambdapar=reg)
         w_change = (new_theta - theta).norm()
         theta = new_theta
-        print((torch.round(torch.sigmoid(X @ theta)) == y).sum())
-        if w_change < 1e-5:
-            print("Converged in {} iterations".format(i))
+        #print((torch.round(torch.sigmoid(X @ theta)) == y).sum())
+        if (theta!=theta).any():
+            raise ValueError("NaN in logistic")
+        if w_change < 1e-4:
+            # print("Converged in {} iterations".format(i))
             return theta
-
-        if i > 1e2:
+        if i > 10:
             print("Failed to converge")
             return theta
 
-def newtonIteration_torch(x, y, b, theta, weights, lambdapar=1e-5):
+
+def newtonIteration_torch(x, y, b, theta, weights, lambdapar=0):
+
+    #assert (y >= 0).all() and (y <= 1).all(), "Wrong y values"
+    #print("Mean y is {}".format(np.mean(y.cpu().numpy())))
+
+
     hyptheta = torch.sigmoid(x @ theta + b).view(-1)
 
     zs = weights * (y - hyptheta)
@@ -99,7 +112,26 @@ def newtonIteration_torch(x, y, b, theta, weights, lambdapar=1e-5):
     #HinvGrad = np.linalg.solve(H, gradll)
     HinvGrad, _ = torch.gesv(gradll.view(-1, 1), H)
     theta = theta - HinvGrad.view(-1)
+    #print("Mean theta is {}".format(np.mean(np.abs(theta.cpu().numpy()))))
     return theta
+
+
+def train_linear_torch(X, y, b = 0, weights= None, thetas= None, reg=0.005):
+
+    try:
+        if weights is not None:
+            theta, _ = torch.gesv((X.t() @ (weights * (y - b))).view(-1, 1), X.t() * weights @ X + reg * torch.eye(X.shape[1]).cuda())
+        else:
+            theta, _ = torch.gesv((X.t() @ (y - b)).view(-1, 1), X.t() @ X + reg * torch.eye(X.shape[1]).cuda())
+    except:
+        print(X.t() @ X, X)
+        raise ValueError()
+
+    if (theta != theta).any():
+        raise ValueError("NaN in linear")
+    return theta
+
+
 
 
 if __name__ == "__main__":
@@ -172,7 +204,7 @@ if __name__ == "__main__":
         thetas = train_logistic_torch(Xt, yt)
         #log_reg.fit(X, y)
         cur_time += time.time()-start
-    print(thetas)
+   # print(thetas)
     print("Time is {}".format(cur_time/10))
     # cur_time = 0
     # for i in range(10):
@@ -184,3 +216,22 @@ if __name__ == "__main__":
     #     #log_reg.fit(X, y)
     #     cur_time += time.time()-start
     # print("Time is {}".format(cur_time/10))
+
+
+
+
+    ## Test the optimization
+
+    b = np.array([0.3, -0.7, 0.5])[:, None]
+
+    N = 10000
+
+    X = np.random.normal(size=(N, 2))
+    X = np.hstack([np.ones(N)[:, None], X])
+
+    y = X @ b #+ np.random.normal(size=X.shape[0])[:, None]
+
+    Xt = torch.FloatTensor(X).cuda()
+    yt = torch.sigmoid(torch.FloatTensor(y).cuda())
+
+    res = train_logistic_torch(Xt, yt.view(-1))
