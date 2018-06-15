@@ -1,4 +1,4 @@
-vocab_size = 3000
+vocab_size = 7000
 zero_value = 0
 
 reg_B = 1e-3

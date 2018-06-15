@@ -2,7 +2,6 @@ import numpy as np
 import torch
 from probit_factor_model import train_logistic_torch, train_linear_torch
 import pickle as pkl
-import time
 from collections import defaultdict
 import settings
 
@@ -23,7 +22,7 @@ class Model:
         self.lin = False # linear embedding terms
 
         self.logistic = logistic
-        self.co_is_identity = True
+        self.co_is_identity = False
         self.vocab_size = len(vocab)
         self.vocab = vocab
         self.w_to_i = {}
@@ -78,11 +77,12 @@ class Model:
             self.RposU += [du]
             self.RposV += [dv]
         print("time", time.time() - start)
+        #
         # self.RposU = [{ui: set([(int(vi), rel) for utmp, vi, rel in r if utmp == ui]) for ui, _, _ in r} for r in self.R]
         # self.RposV = [{vi: set([(int(ui), rel) for ui, vtmp, rel in r if vtmp == vi]) for _, vi, _ in r} for r in self.R]
         #
-        self.global_neg_sample_weight = self.neg_sample_rate * sum(len(r) for r in self.R)  / len(self.R) / self.max_sample_size_B
-
+        # self.global_neg_sample_weight = self.neg_sample_rate * sum(len(r) for r in self.R)  / len(self.R) / self.max_sample_size_B
+        # self.global_sam
 
         # min(sum(len(r) for r in self.R) * self.neg_sample_rate / len(self.R), self.max_global_neg_samples) ? Should be a limit
 
@@ -94,48 +94,55 @@ class Model:
         # sample_size = min(len(self.Rpos[r_ind]), self.max_sample_size_B)
         # us = np.random.randint(self.vocab_size, size= self.neg_sample_rate * sample_size)
         # vs = np.random.randint(self.vocab_size, size= self.neg_sample_rate * sample_size)
+        possible_us = np.array(list(self.RposU[r_ind]))
+        possible_vs = np.array(list(self.RposV[r_ind]))
+        us = possible_us[np.random.randint(len(possible_us), size= int(self.max_sample_size_B))]
+        vs = possible_vs[np.random.randint(len(possible_vs), size= int(self.max_sample_size_B))]
 
-        us = np.random.randint(self.vocab_size, size= int(self.max_sample_size_B))
-        vs = np.random.randint(self.vocab_size, size= int(self.max_sample_size_B))
 
-        r_neg = [(int(ui), int(vi), zero_value, self.global_neg_sample_weight) for ui, vi in zip(us, vs) if
+        r_neg = [(int(ui), int(vi), zero_value) for ui, vi in zip(us, vs) if
                  (int(ui), int(vi)) not in self.Rpos[r_ind]] # change 0
-
+        neg_weight = (self.max_sample_size_B / (len(r_neg)) if len(r_neg) else 1)
+        r_neg = [x+(neg_weight,) for x in r_neg]
 
         return r_neg
 
     def get_samples_for_B(self,r_ind):
         # zero_value = settings.zero_value if self.relation_names[r_ind] != 'co' else 0
-        # r_all = [(u, v, self.Rval[r_ind][u,v]) for u in range(self.vocab_size) for v in range(self.vocab_size)]
+        # r_all = [(u, v, self.Rval[r_ind][u,v],1) for u in range(self.vocab_size) for v in range(self.vocab_size)]
         # return r_all
         ## Subsampling true relations
         indices = np.arange(len(self.R[r_ind]))
         np.random.shuffle(indices)
-        pos_weight = max(len(self.R[r_ind])/self.max_sample_size_B, 1)
+        pos_weight = max(self.max_sample_size_B/len(self.R[r_ind]), 1)
         return [self.R[r_ind][ind] + (pos_weight,) for ind in indices[:self.max_sample_size_B]] + self.sample_neg_R(r_ind)
 
     def get_samples_for_w(self, w_ind, sample_for_U_update=True):
         Rs = []
 
         for i, rel in enumerate(self.RposU if sample_for_U_update else self.RposV):
+            possible_vis = np.array(list(self.RposV[i] if sample_for_U_update else self.RposU[i]))
+            #fixed_neg = min(len(self.Rpos[i]), self.max_sample_size_B) * self.neg_sample_rate / self.vocab_size ## old sampling
 
-            fixed_neg = min(len(self.Rpos[i]), self.max_sample_size_B) * self.neg_sample_rate / self.vocab_size ## old sampling
-            natural_count = self.max_sample_size_B / self.vocab_size
-            ratio = natural_count / self.max_sample_size_w
-            neg_weights = self.global_neg_sample_weight * ratio
             if w_ind in rel:
+                natural_pos_weight = self.max_sample_size_B/len(self.R[i])
                 rel_w = rel[w_ind]
                 pos_sample_size = min(len(rel_w), self.max_sample_size_w)
                 vis, rs = zip(*subsample(list(rel_w), pos_sample_size))
                 pos_len = len(vis)
-                pos_weights = max(len(rel_w)/self.max_sample_size_w,1)
-                neg_samples = [x for x in intlist(np.random.randint(self.vocab_size, size= self.max_sample_size_w)) if x not in rel_w]
+                pos_weights = natural_pos_weight * max(len(rel_w)/self.max_sample_size_w,1)
+                natural_neg_weight = self.max_sample_size_B/(len(rel) * len(possible_vis) - len(self.R[i]))
+                non_rel_w = [x for x in possible_vis if x not in rel_w]
+
+                neg_samples = [int(non_rel_w[x]) for x in np.random.randint(len(non_rel_w), size=self.max_sample_size_w)] if len(non_rel_w) else []
+                neg_weights = (natural_neg_weight * len(non_rel_w) / self.max_sample_size_w)
             else:
                 vis = []
                 rs = []
                 pos_len = 0
                 pos_weights = 1
-                neg_samples = intlist(np.random.randint(self.vocab_size, size=self.max_sample_size_w))
+                neg_samples = [] #intlist(np.random.randint(self.vocab_size, size=self.max_sample_size_w))
+                neg_weights = 1
 
             vis = list(vis) + neg_samples
             if self.relation_names[i] != 'co':
@@ -143,8 +150,9 @@ class Model:
             else:
                 rs = list(rs) + [0] * len(neg_samples)  # change 0
             ws = [pos_weights] * pos_len + [neg_weights] * len(neg_samples)
+
             ######################
-            ##### dirty hack #####
+            ##### full sample #####
             ######################
 
             # if w_ind in rel:
@@ -159,9 +167,9 @@ class Model:
             # new_vis, new_rs = zip(*[(i, 0) for i in range(self.vocab_size) if i not in vset])
             # vis = vis + new_vis
             # rs = rs + new_rs
-
+            # ws = [1] * len(vis)
             ##########################
-            ##### dirty hack end #####
+            ##### full sample end #####
             ##########################
 
 
@@ -204,9 +212,10 @@ class Model:
             all_weights = []
             for i, r in enumerate(self.get_samples_for_w(w, sample_for_U_update=True)):
                 vis, rs, ws = r
-                all_X += [V1[list(vis)] @ self.B[i].t()]
-                all_y += [torch.FloatTensor(rs).cuda()]
-                all_weights += [torch.FloatTensor(ws).cuda()]
+                if vis:
+                    all_X += [V1[list(vis)] @ self.B[i].t()]
+                    all_y += [torch.FloatTensor(rs).cuda()]
+                    all_weights += [torch.FloatTensor(ws).cuda()]
             Xb = torch.cat(all_X)
 
             if self.lin:
@@ -236,9 +245,10 @@ class Model:
             all_weights = []
             for i, r in enumerate(self.get_samples_for_w(w, sample_for_U_update=False)):
                 uis, rs, ws = r
-                all_X += [U1[list(uis)] @ self.B[i]]
-                all_y += [torch.FloatTensor(rs).cuda()]
-                all_weights += [torch.FloatTensor(ws).cuda()]
+                if uis:
+                    all_X += [U1[list(uis)] @ self.B[i]]
+                    all_y += [torch.FloatTensor(rs).cuda()]
+                    all_weights += [torch.FloatTensor(ws).cuda()]
             Xb = torch.cat(all_X)
             if self.lin:
                 X = Xb[:, :-1]
@@ -255,7 +265,9 @@ class Model:
                 self.V[w] = train_linear_torch(X, y, thetas=self.V[w], weights=weight, b=b, reg=self.lambdaUV)
             # print(time.time() - start)
 
-    def findBest(self, r, w, top = 20):
+    def findBest(self, r, w, top=20, restrict=True):
+        possible_us = self.RposU[r]
+        possible_vs = self.RposV[r]
         w = self.w_to_i[w]
         if self.lin:
             U1 = torch.cat([self.U, torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda()], 1)
@@ -265,9 +277,22 @@ class Model:
             V1 = self.V
         vs = (U1[w].view(1, -1) @ self.B[r]) @ V1.t()
         us = (U1 @ (self.B[r] @ V1[w]))
-        ubest = [self.i_to_w[x] for x in np.argsort(-us.cpu().numpy())][:top]
-        vbest = [self.i_to_w[x] for x in np.argsort(-vs.cpu().numpy()).flatten()][:top]
-        return ubest,vbest
+        ubest = [self.i_to_w[x] for x in np.argsort(np.abs(1 - us.cpu().numpy())) if x in possible_us][:top]
+        vbest = [self.i_to_w[x] for x in np.argsort(np.abs(1 - vs.cpu().numpy())).flatten() if x in possible_vs][:top]
+        return ubest, vbest
+
+    def getEmbeddingModel(self,relation=None):
+        if self.lin:
+            U1 = torch.cat([self.U, torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda()], 1)
+            V1 = torch.cat([self.V, torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda()], 1)
+        else:
+            U1 = self.U
+            V1 = self.V
+        if relation is not None:
+            U1 = U1 @ self.B[relation]
+        embs = torch.cat([U1 , V1],1).cpu().numpy()
+        return embs,dict([(self.i_to_w[i],embs[i]) for i in range(self.vocab_size)])
+
 
     def estimateLL(self):
         if self.lin:
@@ -305,6 +330,7 @@ class Model:
             log_prob -= self.lambdaB * 0.5 * (self.B[i] ** 2).sum()
             #cur_correct = (torch.round(pred) == y_true).sum()
             cur_correct = np.corrcoef(pred.cpu().numpy(), y_true.cpu().numpy())[0, 1] # correlation
+            print(i,cur_correct)
             if cur_correct != cur_correct:
                 print("nan correlation")
                 cur_correct = 1
