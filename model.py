@@ -18,6 +18,10 @@ def subsample(li, num):
 class Model:
 
     def __init__(self, vocab, relations, embedding_dimension = 50, logistic=False, lambdaB=1e-3, lambdaUV=1e-3):
+        """
+        Initialize the model and pre-process the relation matrices (for the sake of efficiency)
+        Might take up to 10 minutes for a large vocabulary (30 000 words)
+        """
 
         self.lin = False # linear embedding terms
 
@@ -87,13 +91,18 @@ class Model:
         # min(sum(len(r) for r in self.R) * self.neg_sample_rate / len(self.R), self.max_global_neg_samples) ? Should be a limit
 
     def sample_neg_R(self, r_ind):
+        """
+        Sample negative examples for a given relation
+        """
         zero_value = settings.zero_value if self.relation_names[r_ind] != 'co' else 0
 
-        # np.random.seed(1) ## old sampling
-
+        #### old sampling ####
+        ####
         # sample_size = min(len(self.Rpos[r_ind]), self.max_sample_size_B)
         # us = np.random.randint(self.vocab_size, size= self.neg_sample_rate * sample_size)
         # vs = np.random.randint(self.vocab_size, size= self.neg_sample_rate * sample_size)
+        ######################
+
         possible_us = np.array(list(self.RposU[r_ind]))
         possible_vs = np.array(list(self.RposV[r_ind]))
         us = possible_us[np.random.randint(len(possible_us), size= int(self.max_sample_size_B))]
@@ -107,7 +116,11 @@ class Model:
 
         return r_neg
 
-    def get_samples_for_B(self,r_ind):
+    def get_samples_for_B(self, r_ind):
+        """
+        Obtain a sample for a given relation for a subsequent B update or likelihood estimation.
+        """
+        ### Old sampling
         # zero_value = settings.zero_value if self.relation_names[r_ind] != 'co' else 0
         # r_all = [(u, v, self.Rval[r_ind][u,v],1) for u in range(self.vocab_size) for v in range(self.vocab_size)]
         # return r_all
@@ -118,6 +131,10 @@ class Model:
         return [self.R[r_ind][ind] + (pos_weight,) for ind in indices[:self.max_sample_size_B]] + self.sample_neg_R(r_ind)
 
     def get_samples_for_w(self, w_ind, sample_for_U_update=True):
+        """
+        Obtain a sample for the V or U embeddings update step
+        """
+
         Rs = []
 
         for i, rel in enumerate(self.RposU if sample_for_U_update else self.RposV):
@@ -178,6 +195,10 @@ class Model:
 
 
     def updateB(self):
+        """
+        Perform the B update step
+        """
+
         if self.lin:
             U1 = torch.cat([self.U, torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda()], 1)
             V1 = torch.cat([self.V, torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda()], 1)
@@ -200,6 +221,9 @@ class Model:
 
 
     def updateU(self):
+        """
+        Perform the U update step
+        """
 
         if self.lin:
             V1 = torch.cat([self.V, torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda()], 1)
@@ -234,6 +258,10 @@ class Model:
             #print(time.time() - start)
 
     def updateV(self):
+        """
+        Perform the V update step
+        """
+
         if self.lin:
             U1 = torch.cat([self.U, torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda()], 1)
         else:
@@ -266,6 +294,9 @@ class Model:
             # print(time.time() - start)
 
     def findBest(self, r, w, top=20, restrict=True):
+        """
+        Find closest pairs for a word in a given relation
+        """
         possible_us = self.RposU[r]
         possible_vs = self.RposV[r]
         w = self.w_to_i[w]
@@ -281,7 +312,10 @@ class Model:
         vbest = [self.i_to_w[x] for x in np.argsort(np.abs(1 - vs.cpu().numpy())).flatten() if x in possible_vs][:top]
         return ubest, vbest
 
-    def getEmbeddingModel(self,relation=None):
+    def getEmbeddingModel(self, relation=None):
+        """
+        Helper function to return embeddings in a proper format
+        """
         if self.lin:
             U1 = torch.cat([self.U, torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda()], 1)
             V1 = torch.cat([self.V, torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda()], 1)
@@ -295,6 +329,9 @@ class Model:
 
 
     def estimateLL(self):
+        """
+        Estimate log likelihood of the data and the correlation with the correct answer (based on 10 000 samples)
+        """
         if self.lin:
             U1 = torch.cat([self.U, torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda()], 1)
             V1 = torch.cat([self.V, torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda()], 1)
@@ -344,10 +381,16 @@ class Model:
         return log_prob, correct / len(self.R)
 
     def save(self, filename):
+        """
+        Save the crucial model components to a file
+        """
         with open(filename, "wb") as f:
             pkl.dump({"U": self.U, "B": self.B, "V": self.V, "vocab": self.vocab, "rel": self.relation_names}, f)
 
     def load(self, filename):
+        """
+        Load model data from a file
+        """
         with open(filename, "rb") as f:
             state = pkl.load(f)
             self.U = state["U"]
