@@ -158,7 +158,8 @@ class Model:
                 rs = []
                 pos_len = 0
                 pos_weights = 1
-                neg_samples = [] #intlist(np.random.randint(self.vocab_size, size=self.max_sample_size_w))
+                neg_samples = [] # or the alternative below # faills if neg samples are empty and only co is used
+                #neg_samples = intlist(np.random.randint(self.vocab_size, size=self.max_sample_size_w))
                 neg_weights = 1
 
             vis = list(vis) + neg_samples
@@ -190,7 +191,7 @@ class Model:
             ##########################
 
 
-            Rs += [(vis, rs,ws)]
+            Rs += [(vis, rs, ws)]
         return Rs
 
 
@@ -367,7 +368,7 @@ class Model:
             log_prob -= self.lambdaB * 0.5 * (self.B[i] ** 2).sum()
             #cur_correct = (torch.round(pred) == y_true).sum()
             cur_correct = np.corrcoef(pred.cpu().numpy(), y_true.cpu().numpy())[0, 1] # correlation
-            print(i,cur_correct)
+            print("Correlation for factor {}: {}".format(self.relation_names[i], cur_correct))
             if cur_correct != cur_correct:
                 print("nan correlation")
                 cur_correct = 1
@@ -377,7 +378,7 @@ class Model:
             correct += cur_correct
         log_prob -= self.lambdaUV * 0.5 * ((self.U ** 2).sum() + (self.V ** 2).sum())
         #return log_prob, correct/(samples*len(self.R))
-        print(log_prob, correct / len(self.R))
+        print("Log prob: {}, accuracy: {}".format(log_prob, correct / len(self.R)))
         return log_prob, correct / len(self.R)
 
     def save(self, filename):

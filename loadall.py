@@ -14,42 +14,59 @@ with open("data/relations_mat.pkl", "rb") as f:
 with open("data/co.pkl", "rb") as f:
     comat = pkl.load(f)
 
-biggest = 0
-for a, b, c in comat:
-    l = math.log(1 + c)
-    biggest = max(l, biggest)
+# biggest = 0
+# for a, b, c in comat:
+#     l = math.log(1 + c)
+#     biggest = max(l, biggest)
+#
+# comat = [(a, b, math.log(1 + c)/biggest) for a, b, c in comat]
 
-comat = [(a, b, math.log(1 + c)/biggest) for a, b, c in comat]
+_, _, c = zip(*comat)
+co_mean = np.mean(np.log1p(c))
+comat = [(a, b, np.log1p(c)/(2 * co_mean)) for a, b, c in comat] # make mean covariance to be 0.5. Think about a more principled choice
+# Gives some weird error with only co. I suspect that it checks co equality with one. Will double check now. Works better with many factors.
 
 with open("data/vocab.txt", "r") as f:
     vocab = [(v.split(" ")[0], i) for i, v in enumerate(f.readlines())][:vocab_size]
 
-#relmat_old = relmat
-# relmat = {}
-# relmat['/r/IsA'] = relmat_old['/r/IsA']
-# relmat['/r/Antonym'] = relmat_old['/r/Antonym']
-relmat["co"] = comat
-m = Model(vocab, relmat, embedding_dimension=50, lambdaB=1e-3, lambdaUV=1e-3, logistic=False)
+## Test only subset of rels
 
-if __name__ == "__main__" and False:
+relmat_old = relmat
+relmat = {}
+relmat['/r/IsA'] = relmat_old['/r/IsA']
+relmat['/r/Antonym'] = relmat_old['/r/Antonym']
+relmat['/r/CapableOf'] = relmat_old['/r/CapableOf']
+relmat['/r/RelatedTo'] = relmat_old['/r/RelatedTo']
+relmat['/r/Synonym'] = relmat_old['/r/Synonym']
+
+
+relmat["co"] = comat
+m = Model(vocab, relmat, embedding_dimension=50, lambdaB=settings.reg_UV, lambdaUV=settings.reg_UV, logistic=False)
+
+if __name__ == "__main__":
     start = time.time()
     estimates = [m.estimateLL()]
-    print("est",time.time() - start)
+    print("Likelihood estimation time:", time.time() - start)
     m.save("data/model{}.pkl".format(0))
     for i in range(10):
         start = time.time()
+        print("Updating B:")
         m.updateB()
-        print(time.time()-start)
-        print("B",[torch.max(torch.abs(b)) for b in m.B])
+        #print(time.time()-start)
+        print("Max B values: ", [torch.max(torch.abs(b)) for b in m.B])
         estimates += [m.estimateLL()]
         start = time.time()
+
         if i % 2 == 1:
+            print("Updating V:")
             m.updateV()
-            print(torch.max(torch.abs(m.V)))
+            print("Max V value: {}".format(torch.max(torch.abs(m.V))))
         else:
+            print("Updating U:")
             m.updateU()
-            print(torch.max(torch.abs(m.U)))
-        print(time.time()-start)
+            print("Max U value: {}".format(torch.max(torch.abs(m.U))))
+
+        #print(time.time()-start)
         estimates += [m.estimateLL()]
         # if i % 2 == 0:
         #     m.updateV()
@@ -116,13 +133,13 @@ if __name__ == "__main__" and False:
 
     # nice one - model 5
 
-    for i in range(11):
-        m.load("./data/model{}.pkl".format(i))
-
-        print("################### Iteration {} ##################".format(i))
-        rnum = len(m.relation_names)
-        for i, r in enumerate(m.relation_names):
-            print("Rel: {}, B: {}, U: {}, V: {}".format(r, torch.norm(m.B[i]), torch.norm(m.U), torch.norm(m.V)))
+    # for i in range(11):
+    #     m.load("./data/model{}.pkl".format(i))
+    #
+    #     print("################### Iteration {} ##################".format(i))
+    #     rnum = len(m.relation_names)
+    #     for i, r in enumerate(m.relation_names):
+    #         print("Rel: {}, B: {}, U: {}, V: {}".format(r, torch.norm(m.B[i]), torch.norm(m.U), torch.norm(m.V)))
 
 
 m.load("./data/model{}.pkl".format(10))
