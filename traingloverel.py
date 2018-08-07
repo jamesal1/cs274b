@@ -29,7 +29,7 @@ with open("data/gloveEmbs200.txt","r") as f:
     for row in f.readlines():
         arr=row.strip().split()
         gloveList +=[[float(x) for x in arr[1:]]]
-        if len(gloveList)==settings.vocab_size:
+        if len(gloveList) == settings.vocab_size:
             break
 gloveArr = np.array(gloveList)
 gloveU = gloveArr[:, :50]

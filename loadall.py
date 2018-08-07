@@ -41,7 +41,7 @@ relmat['/r/Synonym'] = relmat_old['/r/Synonym']
 
 
 relmat["co"] = comat
-m = Model(vocab, relmat, embedding_dimension=50, lambdaB=settings.reg_UV, lambdaUV=settings.reg_UV, logistic=False)
+m = Model(vocab, relmat, embedding_dimension=50, lambdaB=settings.reg_UV, lambdaUV=settings.reg_UV, logistic=False, co_is_identity=settings.co_is_identity)
 
 if __name__ == "__main__":
     start = time.time()
@@ -56,6 +56,8 @@ if __name__ == "__main__":
         print("Max B values: ", [torch.max(torch.abs(b)) for b in m.B])
         estimates += [m.estimateLL()]
         start = time.time()
+
+
 
         if i % 2 == 1:
             print("Updating V:")
@@ -127,9 +129,7 @@ if __name__ == "__main__":
     plt.ylabel("correlation with correct answers")
     plt.show()
 
-
-
-    print(m.findBest(0,"good"))
+    # print(m.findBest(0,"good"))
 
     # nice one - model 5
 
@@ -146,8 +146,9 @@ m.load("./data/model{}.pkl".format(10))
 
 
 
-# word = "garfield" # actually garfield is an interesing case. Acquired some information by just being an antonym to a cat
-# for i, r in enumerate(m.relation_names):
-#     print("Best words for word {} and relation {} are {} and {}".format(word, m.relation_names[i], m.findBest(i, word, 5)))
+#word = "garfield" # actually garfield is an interesing case. Acquired some information by just being an antonym to a cat
+word = "good" # actually garfield is an interesing case. Acquired some information by just being an antonym to a cat
+for i, r in enumerate(m.relation_names):
+    print("Best words for word {} and relation {} are {}".format(word, m.relation_names[i], m.findBest(i, word, 5)))
 
     # The first part is somewhat weird. Maybe a bug?

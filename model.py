@@ -17,7 +17,7 @@ def subsample(li, num):
 
 class Model:
 
-    def __init__(self, vocab, relations, embedding_dimension = 50, logistic=False, lambdaB=1e-3, lambdaUV=1e-3):
+    def __init__(self, vocab, relations, embedding_dimension = 50, logistic=False, lambdaB=1e-3, lambdaUV=1e-3, co_is_identity=False):
         """
         Initialize the model and pre-process the relation matrices (for the sake of efficiency)
         Might take up to 10 minutes for a large vocabulary (30 000 words)
@@ -26,7 +26,7 @@ class Model:
         self.lin = False # linear embedding terms
 
         self.logistic = logistic
-        self.co_is_identity = False
+        self.co_is_identity = co_is_identity
         self.vocab_size = len(vocab)
         self.vocab = vocab
         self.w_to_i = {}
@@ -61,8 +61,8 @@ class Model:
         self.max_sample_size_B = 100000 # was 10k # was 1 M
         self.max_sample_size_w = 2000
         self.neg_sample_rate = 2
-        self.lambdaB = lambdaB # if self.logistic else 1e-3 # was e-1 for B before
-        self.lambdaUV = lambdaUV # if self.logistic else 1e-3
+        self.lambdaB = lambdaB
+        self.lambdaUV = lambdaUV
         start = time.time()
         self.Rpos = [set([(int(ui), int(vi)) for ui, vi, _ in r]) for r in self.R]
         print("time",time.time() - start)
@@ -105,7 +105,7 @@ class Model:
 
         possible_us = np.array(list(self.RposU[r_ind]))
         possible_vs = np.array(list(self.RposV[r_ind]))
-        us = possible_us[np.random.randint(len(possible_us), size= int(self.max_sample_size_B))]
+        us = possible_us[np.random.randint(len(possible_us), size= int(self.max_sample_size_B))] # just add completely random negative pairs here?
         vs = possible_vs[np.random.randint(len(possible_vs), size= int(self.max_sample_size_B))]
 
 
@@ -142,13 +142,13 @@ class Model:
             #fixed_neg = min(len(self.Rpos[i]), self.max_sample_size_B) * self.neg_sample_rate / self.vocab_size ## old sampling
 
             if w_ind in rel:
-                natural_pos_weight = self.max_sample_size_B/len(self.R[i])
+                natural_pos_weight = self.max_sample_size_B / len(self.R[i])
                 rel_w = rel[w_ind]
                 pos_sample_size = min(len(rel_w), self.max_sample_size_w)
                 vis, rs = zip(*subsample(list(rel_w), pos_sample_size))
                 pos_len = len(vis)
-                pos_weights = natural_pos_weight * max(len(rel_w)/self.max_sample_size_w,1)
-                natural_neg_weight = self.max_sample_size_B/(len(rel) * len(possible_vis) - len(self.R[i]))
+                pos_weights = natural_pos_weight * max(len(rel_w) / self.max_sample_size_w, 1)
+                natural_neg_weight = self.max_sample_size_B / (len(rel) * len(possible_vis) - len(self.R[i]))
                 non_rel_w = [x for x in possible_vis if x not in rel_w]
 
                 neg_samples = [int(non_rel_w[x]) for x in np.random.randint(len(non_rel_w), size=self.max_sample_size_w)] if len(non_rel_w) else []
@@ -169,9 +169,9 @@ class Model:
                 rs = list(rs) + [0] * len(neg_samples)  # change 0
             ws = [pos_weights] * pos_len + [neg_weights] * len(neg_samples)
 
-            ######################
+            #######################
             ##### full sample #####
-            ######################
+            #######################
 
             # if w_ind in rel:
             #     rel_w = rel[w_ind]
@@ -241,7 +241,7 @@ class Model:
                     all_X += [V1[list(vis)] @ self.B[i].t()]
                     all_y += [torch.FloatTensor(rs).cuda()]
                     all_weights += [torch.FloatTensor(ws).cuda()]
-            Xb = torch.cat(all_X)
+            Xb = torch.cat(all_X) # gives error when there is no CO
 
             if self.lin:
                 X = Xb[:, :-1]
@@ -256,6 +256,7 @@ class Model:
                 self.U[w] = train_logistic_torch(X, y, thetas=self.U[w], b= b, reg=self.lambdaUV)
             else:
                 self.U[w] = train_linear_torch(X, y, thetas=self.U[w], weights=weight, b=b, reg=self.lambdaUV)
+                #self.U[w] = train_linear_torch(X, y, thetas=self.U[w], b=b, reg=self.lambdaUV)
             #print(time.time() - start)
 
     def updateV(self):
@@ -292,6 +293,7 @@ class Model:
                 self.V[w] = train_logistic_torch(X, y, thetas=self.V[w], b= b, reg=self.lambdaUV)
             else:
                 self.V[w] = train_linear_torch(X, y, thetas=self.V[w], weights=weight, b=b, reg=self.lambdaUV)
+                #self.V[w] = train_linear_torch(X, y, thetas=self.V[w], b=b, reg=self.lambdaUV)
             # print(time.time() - start)
 
     def findBest(self, r, w, top=20, restrict=True):
@@ -326,7 +328,7 @@ class Model:
         if relation is not None:
             U1 = U1 @ self.B[relation]
         embs = torch.cat([U1 , V1],1).cpu().numpy()
-        return embs,dict([(self.i_to_w[i],embs[i]) for i in range(self.vocab_size)])
+        return embs, dict([(self.i_to_w[i],embs[i]) for i in range(self.vocab_size)])
 
 
     def estimateLL(self):
@@ -340,7 +342,6 @@ class Model:
             U1 = self.U
             V1 = self.V
 
-        samples = 10000
         log_prob = 0
 
         correct = 0
