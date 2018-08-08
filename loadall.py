@@ -41,7 +41,9 @@ relmat['/r/Synonym'] = relmat_old['/r/Synonym']
 
 
 relmat["co"] = comat
-m = Model(vocab, relmat, embedding_dimension=50, lambdaB=settings.reg_UV, lambdaUV=settings.reg_UV, logistic=False, co_is_identity=settings.co_is_identity)
+m = Model(vocab, relmat, embedding_dimension=50, lambdaB=settings.reg_UV, lambdaUV=settings.reg_UV,
+          logistic=False, co_is_identity=settings.co_is_identity,
+          sampling_scheme=settings.sampling_scheme, proportion_positive=settings.proportion_positive)
 
 if __name__ == "__main__":
     start = time.time()
