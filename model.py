@@ -25,9 +25,19 @@ class Model:
         """
         Initialize the model and pre-process the relation matrices (for the sake of efficiency)
         Might take up to 10 minutes for a large vocabulary (30 000 words)
+
+        Sampling schemes:
+        Complete sampling - all possible uv pairs are considered for B update step,
+        all words are sampled for the U and V updates.
+
+        Uniform sampling uniformly subsamples UV pairs, as the name suggests.
+
+        The problem with uniform and complete sampling is that some relations are very rare and thus the positive examples
+        do not get sample enough. We assume another baseline distribution in order to deal with such cases.
+
         """
 
-        self.lin = False  # linear embedding terms # Need to try both
+        self.lin = True  # linear embedding terms # Need to try both
         self.sampling_scheme = sampling_scheme  # either "uniform" or "proportional"
         if sampling_scheme not in ("uniform", "proportional", "complete"):
             raise ValueError("Unknown sampling scheme {}".format(sampling_scheme))
@@ -88,14 +98,32 @@ class Model:
         start = time.time()
         self.RposU = []
         self.RposV = []
+        self.RposU2 = [] # only store indexes
+        self.RposV2 = [] # only store indexes
         for r in self.R:
             du = defaultdict(lambda: set())
             dv = defaultdict(lambda: set())
+
+            du2 = defaultdict(lambda: set())
+            dv2 = defaultdict(lambda: set())
             for ui, vi, rel in r:
                 du[ui].add((int(vi), rel))
                 dv[vi].add((int(ui), rel))
+                du2[ui].add(int(vi))
+                dv2[vi].add(int(ui))
+
             self.RposU += [du]
             self.RposV += [dv]
+
+            self.RposU2 += [du]
+            self.RposV2 += [dv]
+
+        self.Rval = [dict(dd) for dd in self.Rval]
+        self.RposU = [dict(dd) for dd in self.RposU]
+        self.RposV = [dict(dd) for dd in self.RposV]
+        self.RposU2 = [dict(dd) for dd in self.RposU2]
+        self.RposV2 = [dict(dd) for dd in self.RposV2]
+
         print("time", time.time() - start)
         #
         # self.RposU = [{ui: set([(int(vi), rel) for utmp, vi, rel in r if utmp == ui]) for ui, _, _ in r} for r in self.R]
@@ -132,6 +160,39 @@ class Model:
 
         return r_neg
 
+    def new_sample_neg_R(self, r_ind):
+        """
+        Sample negative examples for a given relation
+        """
+
+        # To do: deal with co-oc case (the potential no negative case).
+
+        zero_value = settings.zero_value if self.relation_names[r_ind] != 'co' else 0
+
+        ## NOT YET READY AT ALL
+        desired_neg_sample_size = int(np.floor((1 - self.proportion_positive) * self.sample_size_B))
+
+        us = np.random.randint(self.vocab_size, size=int(desired_neg_sample_size * 2)) # To do * 2 part is just a multiplier in order to give a chance to sample enough. The more - the better the precision. Modification needed. max sample size could be appropriate here
+        vs = np.random.randint(self.vocab_size, size=int(desired_neg_sample_size * 2))
+
+        r_neg = [(int(ui), int(vi), zero_value) for ui, vi in zip(us, vs) if
+                 (int(ui), int(vi)) not in self.Rpos[r_ind]]
+
+
+        # # Way to enforce a constant sample size, after all
+        # if len(r_neg) > desired_neg_sample_size:
+        #     r_neg = subsample(r_neg, desired_neg_sample_size)
+        # elif len(r_neg) and len(r_neg) < desired_neg_sample_size:
+        #     indices = np.random.choice(np.arange(len(r_neg)), size=desired_neg_sample_size, replace=True)
+        #     r_neg = [r_neg[i] for i in indices]
+
+        neg_weight = (desired_neg_sample_size / (len(r_neg)) if len(r_neg) else None)
+
+        #neg_weight = 1
+        r_neg = [x + (neg_weight,) for x in r_neg]
+
+        return r_neg
+
     def get_samples_for_B(self, r_ind):
         """
         Obtain a sample for a given relation for a subsequent B update or likelihood estimation.
@@ -157,7 +218,7 @@ class Model:
             samples = [(u, v, self.Rval[r_ind][u, v], 1) if (u, v) in self.Rpos[r_ind] else (u, v, zero_value, 1)
                        for u, v in zip(us, vs)]
             return samples
-        elif self.sampling_scheme == "complete": # Falls on memory on B update step
+        elif self.sampling_scheme == "complete": # Falls on memory access on B update step
             zero_value = settings.zero_value if self.relation_names[r_ind] != 'co' else 0
 #            r_all = [(u, v, self.Rval[r_ind][u, v], 1) for u in range(self.vocab_size) for v in range(self.vocab_size)] # change to not grow the Rval dict
             samples = [(u, v, self.Rval[r_ind][u, v], 1) if (u, v) in self.Rpos[r_ind] else (u, v, zero_value, 1)
@@ -165,9 +226,38 @@ class Model:
             return samples
 
         elif self.sampling_scheme == "proportional":
-            raise NotImplementedError("Proportional sampling is not implemented yet")
+
+            # no replacement option: might create trouble
+            # indices = np.arange(len(self.R[r_ind])) - no repetition might create trouble
+            # np.random.shuffle(indices)
+            # desired_pos_sample_size = np.ceil(self.proportion_positive * self.sample_size_B)
+            # pos_weight = max(desired_pos_sample_size / len(self.R[r_ind]), 1)
+            # return [self.R[r_ind][ind] + (pos_weight,) for ind in indices[:self.max_sample_size_B]] + self.new_sample_neg_R(r_ind)
+
+            desired_pos_sample_size = int(np.ceil(self.proportion_positive * self.sample_size_B))
+            indices = np.random.choice(np.arange(len(self.R[r_ind])), size=desired_pos_sample_size, replace=True)
+            pos_weight = 1
+
+
+            res = [self.R[r_ind][ind] + (pos_weight,) for ind in indices] + self.new_sample_neg_R(r_ind)
+            if len(res) != self.sample_size_B:
+                print("Sample incomplete or too big: {} instead of {}".format(len(res), self.sample_size_B))
+            return res
+
         else:
             raise ValueError("Unknown sampling scheme {}".format(self.sampling_scheme))
+
+    def get_word_proportion_positive(self, w_ind, rel_ind, sample_for_U_update):
+        total_positive = len(self.R[rel_ind])
+        total_possible = self.vocab_size**2
+        if sample_for_U_update:
+            positive_for_a_word = len(self.RposU[rel_ind][w_ind])  if w_ind in self.RposU[rel_ind] else 0
+        else:
+            positive_for_a_word = len(self.RposV[rel_ind][w_ind]) if w_ind in self.RposV[rel_ind] else 0
+
+        word_load = positive_for_a_word / total_positive
+
+        return (word_load * self.proportion_positive) / (word_load * self.proportion_positive + (self.vocab_size - positive_for_a_word)/(total_possible - total_positive) * (1-self.proportion_positive))
 
     def get_samples_for_w(self, w_ind, sample_for_U_update=True):
         """
@@ -242,7 +332,12 @@ class Model:
                 zero_value = settings.zero_value if self.relation_names[i] != 'co' else 0
 
                 sampled_inds = np.random.choice(np.arange(self.vocab_size), size=self.sample_size_w, replace=False)
+                #sampled_inds = np.random.choice(np.arange(self.vocab_size), size=self.sample_size_w, replace=False)
+                #sampled_inds = sorted(sampled_inds)
+                #sampled_inds = subsample(np.arange(self.vocab_size), self.sample_size_w)
+                #sampled_inds  = intlist(np.arange(self.vocab_size))
                 ws = [1] * self.sample_size_w
+
                 if sample_for_U_update:
                     rs = [self.Rval[i][w_ind, v_ind] if (w_ind, v_ind) in self.Rpos[i] else zero_value
                           for v_ind in sampled_inds]
@@ -250,11 +345,11 @@ class Model:
                     rs = [self.Rval[i][u_ind, w_ind] if (u_ind, w_ind) in self.Rpos[i] else zero_value
                           for u_ind in sampled_inds]
 
-                Rs += [(intlist(sampled_inds), intlist(rs), list(ws))]
+                Rs += [(intlist(sampled_inds), rs, ws)]
         elif self.sampling_scheme == "complete":
             Rs = []
             for i, rel in enumerate(self.RposU if sample_for_U_update else self.RposV):
-
+                zero_value = settings.zero_value if self.relation_names[i] != 'co' else 0
                 if w_ind in rel:
                     rel_w = rel[w_ind]
                     vis, rs = zip(*list(rel_w))
@@ -264,15 +359,78 @@ class Model:
                     rs = ()
 
                 vset = set(vis)
-                new_vis, new_rs = zip(*[(i, 0) for i in range(self.vocab_size) if i not in vset])
-                vis = vis + new_vis
-                rs = rs + new_rs
+                if len(vset) < self.vocab_size: # For the co-oc case, when there is nothing to unzip otherwise
+                    new_vis, new_rs = zip(*[(i, zero_value) for i in range(self.vocab_size) if i not in vset])
+                    vis = vis + new_vis
+                    rs = rs + new_rs
                 ws = [1] * len(vis)
 
                 Rs += [(vis, rs, ws)]
 
         elif self.sampling_scheme == "proportional":
-            raise NotImplementedError("Proportional sampling is not implemented yet")
+
+            Rs = []
+            for i, rel in enumerate(self.RposU if sample_for_U_update else self.RposV):
+                zero_value = settings.zero_value if self.relation_names[i] != 'co' else 0
+
+                if w_ind in rel:
+                    rel_w = rel[w_ind]
+                    vis, rs = zip(*list(rel_w))
+                else:
+                    vis = ()
+                    rs = ()
+
+                prop_positive_for_a_word = self.get_word_proportion_positive(w_ind, i, sample_for_U_update)
+
+                expected_number_of_positive = int(np.ceil(self.sample_size_w * prop_positive_for_a_word))
+                expected_number_of_negative = int(np.floor(self.sample_size_w * (1-prop_positive_for_a_word)))
+
+                # print("Expected number of positive examples is {}".format(expected_number_of_positive))
+                # print("Expected number of negative examples is {}".format(expected_number_of_negative))
+
+                # determine the number of samples here
+                if len(vis) or len(vis) > expected_number_of_positive:
+                    sub_ind = np.random.choice(np.arange(len(vis)), size=expected_number_of_positive, replace=True) # replace or not?
+                    vissub = [vis[i] for i in sub_ind]
+                    rssub = [rs[i] for i in sub_ind]
+                else:
+                    vissub = list(vis)
+                    rssub = list(rs)
+
+                vset = set(vis)
+                tmp = [(i, zero_value) for i in range(self.vocab_size) if i not in vset]
+                if expected_number_of_negative > 0: # add try except for no negative?
+                    neg_vis, neg_rs = zip(*tmp)
+                    neg_vis, neg_rs = list(neg_vis), list(neg_rs)
+                else:
+                    neg_vis = []
+                    neg_rs = []
+
+                if len(neg_vis) or len(neg_vis) > expected_number_of_negative:
+                    sub_ind = np.random.choice(np.arange(len(neg_vis)), size=expected_number_of_negative, replace=True) # replace or not?
+                    neg_vissub = [neg_vis[i] for i in sub_ind]
+                    neg_rssub = [neg_rs[i] for i in sub_ind]
+                else:
+                    neg_vissub = neg_vis
+                    neg_rssub = neg_rs
+
+
+                pos_w = expected_number_of_positive / len(vissub) if len(vissub) else None
+
+                # if pos_w is not None:
+                #     B_step_desired_pos_sample_size = np.ceil(self.proportion_positive * self.sample_size_B)
+                #     pos_weight_B_step = max(B_step_desired_pos_sample_size / len(self.R[i]), 1)
+                #     pos_w *= pos_weight_B_step
+
+                neg_w = expected_number_of_negative / len(neg_vissub) if len(neg_vissub) else None
+
+                ws = [pos_w] * len(vissub) + [neg_w] * len(neg_vissub)
+
+                vissub = vissub + neg_vissub
+                rssub = rssub + neg_rssub
+
+                Rs += [(vissub, rssub, ws)]
+
         else:
             raise ValueError("Unknown sampling scheme {}".format(self.sampling_scheme))
 

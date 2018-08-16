@@ -116,7 +116,7 @@ def newtonIteration_torch(x, y, b, theta, weights, lambdapar=0):
     return theta
 
 
-def train_linear_torch(X, y, b = 0, weights= None, thetas= None, reg=0.005):
+def train_linear_torch(X, y, b = 0, weights=None, thetas=None, reg=0.005):
 
     try:
         if weights is not None:
@@ -125,6 +125,7 @@ def train_linear_torch(X, y, b = 0, weights= None, thetas= None, reg=0.005):
             theta, _ = torch.gesv((X.t() @ (y - b)).view(-1, 1), X.t() @ X + reg * torch.eye(X.shape[1]).cuda())
     except:
         print(X.shape)
+        print(X.max())
         print(X.t() @ X, X)
         raise ValueError()
 

@@ -29,7 +29,7 @@ comat = [(a, b, np.log1p(c)/(2 * co_mean)) for a, b, c in comat] # make mean cov
 with open("data/vocab.txt", "r") as f:
     vocab = [(v.split(" ")[0], i) for i, v in enumerate(f.readlines())][:vocab_size]
 
-## Test only subset of rels
+## Test only a subset of rels
 
 relmat_old = relmat
 relmat = {}
@@ -41,8 +41,8 @@ relmat['/r/Synonym'] = relmat_old['/r/Synonym']
 
 
 relmat["co"] = comat
-m = Model(vocab, relmat, embedding_dimension=50, lambdaB=settings.reg_UV, lambdaUV=settings.reg_UV,
-          logistic=False, co_is_identity=settings.co_is_identity,
+m = Model(vocab, relmat, embedding_dimension=5, lambdaB=settings.reg_UV, lambdaUV=settings.reg_UV,
+          logistic=settings.logistic, co_is_identity=settings.co_is_identity,
           sampling_scheme=settings.sampling_scheme, proportion_positive=settings.proportion_positive)
 
 if __name__ == "__main__":
@@ -51,6 +51,7 @@ if __name__ == "__main__":
     print("Likelihood estimation time:", time.time() - start)
     m.save("data/model{}.pkl".format(0))
     for i in range(10):
+
         start = time.time()
         print("Updating B:")
         m.updateB()
@@ -58,8 +59,6 @@ if __name__ == "__main__":
         print("Max B values: ", [torch.max(torch.abs(b)) for b in m.B])
         estimates += [m.estimateLL()]
         start = time.time()
-
-
 
         if i % 2 == 1:
             print("Updating V:")
@@ -102,13 +101,13 @@ if __name__ == "__main__":
     plt.xlabel("dim1")
     plt.ylabel("dim2")
     #plt.zlabel("dim3")
-    #plt.savefig("data/singularity/{}.png".format(i + 1))
+    plt.savefig("data/singularity/{}.png".format(i + 1))
 
-    # for angle in range(0, 360):
+    # for angle in range(0, 360, 1):
     #     ax.view_init(30, angle)
     #     plt.draw()
-    #     plt.pause(.001)
-    #     fig.savefig("data/3dplot/angle{}.png".format(angle))
+    #     #plt.pause(.001)
+    #     fig.savefig("data/3dplot5dim/angle{}.png".format(angle))
 
 
     # print(lls)
@@ -145,8 +144,6 @@ if __name__ == "__main__":
 
 
 m.load("./data/model{}.pkl".format(10))
-
-
 
 #word = "garfield" # actually garfield is an interesing case. Acquired some information by just being an antonym to a cat
 word = "good" # actually garfield is an interesing case. Acquired some information by just being an antonym to a cat
