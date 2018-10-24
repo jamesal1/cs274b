@@ -17,3 +17,5 @@ with open('data/cooccurrence.bin', 'rb') as f:
 
 with open("data/co.pkl", "wb") as f:
     pkl.dump(pairs, f)
+
+print("Unbinning is done")

@@ -4,7 +4,7 @@ from collections import defaultdict
 import pickle as pkl
 import settings
 
-R = defaultdict(lambda: [])
+R = defaultdict(lambda: set())
 
 num_words = settings.vocab_size
 
@@ -17,7 +17,8 @@ with open('./data/vocab.txt', 'r') as f:
         else:
             vocab.add(line.split()[0])
 
-
+symmetric_rels = {'/r/RelatedTo', '/r/Synonym', '/r/Antonym', '/r/DistinctFrom',
+                  '/r/SimilarTo', '/r/LocatedNear', '/r/EtymologicallyRelatedTo'}
 
 with open('./data/conceptnet-assertions-5.6.0.csv', 'r') as f:
 
@@ -55,10 +56,14 @@ with open('./data/conceptnet-assertions-5.6.0.csv', 'r') as f:
                     
             
             if source_w in vocab and target_w in vocab:
-                R[rel].append((source_w, target_w, 1))
-        
+                R[rel].add((source_w, target_w, 1))
+
+            if rel in symmetric_rels:
+                R[rel].add((target_w, source_w, 1))
         
 
+for k in R:
+    R[k] = list(R[k])
 
 with open("./data/relations_dict.pkl", 'wb') as f:
     pkl.dump(dict(R), f)

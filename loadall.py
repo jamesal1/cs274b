@@ -1,6 +1,5 @@
 import pickle as pkl
-from model import Model
-import math
+from model import Model, ModelTorch
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -29,24 +28,124 @@ comat = [(a, b, np.log1p(c)/(2 * co_mean)) for a, b, c in comat] # make mean cov
 with open("data/vocab.txt", "r") as f:
     vocab = [(v.split(" ")[0], i) for i, v in enumerate(f.readlines())][:vocab_size]
 
-## Test only a subset of rels
+# Test only a subset of rels
 
 relmat_old = relmat
 relmat = {}
-relmat['/r/IsA'] = relmat_old['/r/IsA']
+# relmat['/r/IsA'] = relmat_old['/r/IsA']
 relmat['/r/Antonym'] = relmat_old['/r/Antonym']
-relmat['/r/CapableOf'] = relmat_old['/r/CapableOf']
-relmat['/r/RelatedTo'] = relmat_old['/r/RelatedTo']
+# relmat['/r/CapableOf'] = relmat_old['/r/CapableOf']
+# relmat['/r/RelatedTo'] = relmat_old['/r/RelatedTo']
 relmat['/r/Synonym'] = relmat_old['/r/Synonym']
 
+mt = ModelTorch(vocab, relmat, embedding_dimension=50, lambdaB=settings.reg_B, lambdaUV=settings.reg_B,
+                logistic=settings.logistic, co_is_identity=settings.co_is_identity,
+                sampling_scheme=settings.sampling_scheme,
+                proportion_positive=settings.proportion_positive, sample_size_B=settings.sample_size_B)
 
-relmat["co"] = comat
-m = Model(vocab, relmat, embedding_dimension=5, lambdaB=settings.reg_B, lambdaUV=settings.reg_UV,
-          logistic=settings.logistic, co_is_identity=settings.co_is_identity,
-          sampling_scheme=settings.sampling_scheme, proportion_positive=settings.proportion_positive)
+# relmat["co"] = comat
+# m = Model(vocab, relmat, embedding_dimension=5, lambdaB=settings.reg_B, lambdaUV=settings.reg_UV,
+#           logistic=settings.logistic, co_is_identity=settings.co_is_identity,
+#           sampling_scheme=settings.sampling_scheme, proportion_positive=settings.proportion_positive)
 
-print("Checking sampling scheme quality")
+# embs usually 5, for simplicity
 
+optimizer = torch.optim.Adam(mt.parameters())
+
+lls = []
+accs = []
+
+print_every = 50
+
+for i in range(10000):
+
+    if i % print_every == 0:
+        print("#######################")
+        print("Update {}".format(i))
+        print("#######################")
+
+    ll, acc = mt.estimateLL(verbose= (i % print_every == 0))
+    lls.append(ll.data)
+    accs.append(acc)
+
+    nll = -ll
+    nll.backward()
+    optimizer.step()
+    optimizer.zero_grad()
+
+    if i % print_every == 0:
+        print("#######################")
+        print("Update {}".format(i))
+        print("#######################")
+
+
+#for proportion_positive in [0.01, 0.1, 0.2, 0.3, 0.5]:
+# for proportion_positive in [0.3, 0.5]:
+#     for reg in [0, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5]:
+#
+#         print("***************************************")
+#         print("#######################################")
+#         print("Results for proportion positive {} and reg {}".format(proportion_positive, reg))
+#         print("#######################################")
+#         print("***************************************")
+#         mt = ModelTorch(vocab, relmat, embedding_dimension=50, lambdaB=reg, lambdaUV=reg,
+#                   logistic=settings.logistic, co_is_identity=settings.co_is_identity,
+#                   sampling_scheme=settings.sampling_scheme, proportion_positive=proportion_positive, sample_size_B=settings.sample_size_B)
+#
+#         optimizer = torch.optim.Adam(mt.parameters())
+#
+#         lls = []
+#         accs = []
+#
+#         print_every = 1000
+#
+#         for i in range(5000):
+#
+#             if i % print_every == 0:
+#                 print("#######################")
+#                 print("Update {}".format(i))
+#                 print("#######################")
+#
+#             ll, acc = mt.estimateLL(verbose= (i % print_every == 0))
+#             lls.append(ll.data)
+#             accs.append(acc)
+#
+#             nll = -ll
+#             nll.backward()
+#             optimizer.step()
+#             optimizer.zero_grad()
+#
+#             if i % print_every == 0:
+#                 print("#######################")
+#                 print("Update {}".format(i))
+#                 print("#######################")
+#
+#         mt.save("./ReportPlots/7000wordsGradient5000sampleSize5000updates1e-3reg/proppositive{}_reg{}.pkl".format(proportion_positive, reg))
+#         with open("./ReportPlots/7000wordsGradient5000sampleSize5000updates1e-3reg/llsaccs_proppositive{}_reg{}.pkl".format(proportion_positive, reg), "wb") as f:
+#             pkl.dump([lls, accs], f)
+#
+#         plt.figure()
+#         plt.plot(lls)
+#         plt.xlabel("iteration")
+#         plt.ylabel("log likelihood")
+#         plt.savefig("./ReportPlots/7000wordsGradient5000sampleSize5000updates1e-3reg/lls_proppositive{}_reg{}.jpg".format(proportion_positive, reg))
+#         plt.close()
+#
+#         plt.figure()
+#         plt.plot(accs)
+#         plt.xlabel("iteration")
+#         plt.ylabel("correlation with correct answers")
+#         plt.savefig("./ReportPlots/7000wordsGradient5000sampleSize5000updates1e-3reg/corrs_proppositive{}_reg{}.jpg".format(
+#             proportion_positive, reg))
+#         plt.close()
+#
+#         word = "god" # actually garfield is an interesing case. Acquired some information by just being an antonym to a cat
+#         for i, r in enumerate(mt.relation_names):
+#             print("Best words for word {} and relation {} are {}".format(word, mt.relation_names[i], mt.findBest(i, word, 5)))
+#
+#
+
+# print("Checking sampling scheme quality")
 # TO DO
 # estimating sampling quality
 # cntB = np.zeros((m.vocab_size, m.vocab_size))
@@ -68,8 +167,13 @@ print("Checking sampling scheme quality")
 #         cntW[wind, j] += 1
 
 
+# Uncomment to test the model from a file
+# mt = ModelTorch(vocab, relmat, embedding_dimension=50, lambdaB=settings.reg_B, lambdaUV=settings.reg_UV,
+#                    logistic=settings.logistic, co_is_identity=settings.co_is_identity,
+#                    sampling_scheme=settings.sampling_scheme, proportion_positive=settings.proportion_positive, sample_size_B=settings.sample_size_B)
+#mt.load("./ReportPlots/7000wordsGradient5000sampleSize5000updates1e-3reg/proppositive0.1_reg1e-05.pkl")
 
-if __name__ == "__main__":
+if __name__ == "__main__" and False:
     start = time.time()
     estimates = [m.estimateLL()]
     print("Likelihood estimation time:", time.time() - start)
@@ -167,11 +271,11 @@ if __name__ == "__main__":
     #         print("Rel: {}, B: {}, U: {}, V: {}".format(r, torch.norm(m.B[i]), torch.norm(m.U), torch.norm(m.V)))
 
 
-m.load("./data/model{}.pkl".format(10))
+    m.load("./data/model{}.pkl".format(10))
 
-#word = "garfield" # actually garfield is an interesing case. Acquired some information by just being an antonym to a cat
-word = "good" # actually garfield is an interesing case. Acquired some information by just being an antonym to a cat
-for i, r in enumerate(m.relation_names):
-    print("Best words for word {} and relation {} are {}".format(word, m.relation_names[i], m.findBest(i, word, 5)))
+    #word = "garfield" # actually garfield is an interesing case. Acquired some information by just being an antonym to a cat
+    word = "good" # actually garfield is an interesing case. Acquired some information by just being an antonym to a cat
+    for i, r in enumerate(m.relation_names):
+        print("Best words for word {} and relation {} are {}".format(word, m.relation_names[i], m.findBest(i, word, 5)))
 
-    # The first part is somewhat weird. Maybe a bug?
+        # The first part is somewhat weird. Maybe a bug?
