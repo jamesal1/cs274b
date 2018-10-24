@@ -41,9 +41,33 @@ relmat['/r/Synonym'] = relmat_old['/r/Synonym']
 
 
 relmat["co"] = comat
-m = Model(vocab, relmat, embedding_dimension=5, lambdaB=settings.reg_UV, lambdaUV=settings.reg_UV,
+m = Model(vocab, relmat, embedding_dimension=5, lambdaB=settings.reg_B, lambdaUV=settings.reg_UV,
           logistic=settings.logistic, co_is_identity=settings.co_is_identity,
           sampling_scheme=settings.sampling_scheme, proportion_positive=settings.proportion_positive)
+
+print("Checking sampling scheme quality")
+
+# TO DO
+# estimating sampling quality
+# cntB = np.zeros((m.vocab_size, m.vocab_size))
+# num_sim = 100
+# for i in range(num_sim):
+#     if i % 10 == 0:
+#         print("Iteration {}".format(i) )
+#     uis, vis, rs, ws = zip(*m.get_samples_for_B(0))
+#     for u, v in zip(uis, vis):
+#         cntB[u, v] += 1
+#
+# cntB = cntB / num_sim
+#
+# cntW = np.zeros((m.vocab_size, m.vocab_size))
+# wind = 0
+# for i in range(num_sim):
+#     inds, _, _ = zip(*m.get_samples_for_w(wind, True))
+#     for j in inds:
+#         cntW[wind, j] += 1
+
+
 
 if __name__ == "__main__":
     start = time.time()

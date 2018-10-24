@@ -37,7 +37,7 @@ class Model:
 
         """
 
-        self.lin = True  # linear embedding terms # Need to try both
+        self.lin = True # Usually True  # linear embedding terms # Need to try both
         self.sampling_scheme = sampling_scheme  # either "uniform" or "proportional"
         if sampling_scheme not in ("uniform", "proportional", "complete"):
             raise ValueError("Unknown sampling scheme {}".format(sampling_scheme))
@@ -83,7 +83,7 @@ class Model:
         self.neg_sample_rate = 2
 
         self.sample_size_B = 100000
-        self.sample_size_w = 1000  # for every relation
+        self.sample_size_w = 100  # for every relation
 
         self.lambdaB = lambdaB
         self.lambdaUV = lambdaUV
@@ -180,11 +180,11 @@ class Model:
 
 
         # # Way to enforce a constant sample size, after all
-        # if len(r_neg) > desired_neg_sample_size:
-        #     r_neg = subsample(r_neg, desired_neg_sample_size)
-        # elif len(r_neg) and len(r_neg) < desired_neg_sample_size:
-        #     indices = np.random.choice(np.arange(len(r_neg)), size=desired_neg_sample_size, replace=True)
-        #     r_neg = [r_neg[i] for i in indices]
+        if len(r_neg) > desired_neg_sample_size:
+            r_neg = subsample(r_neg, desired_neg_sample_size)
+        elif len(r_neg) and len(r_neg) < desired_neg_sample_size:
+            indices = np.random.choice(np.arange(len(r_neg)), size=desired_neg_sample_size, replace=True)
+            r_neg = [r_neg[i] for i in indices]
 
         neg_weight = (desired_neg_sample_size / (len(r_neg)) if len(r_neg) else None)
 
@@ -258,6 +258,19 @@ class Model:
         word_load = positive_for_a_word / total_positive
 
         return (word_load * self.proportion_positive) / (word_load * self.proportion_positive + (self.vocab_size - positive_for_a_word)/(total_possible - total_positive) * (1-self.proportion_positive))
+
+    def get_word_prob_selected(self, w_ind, rel_ind, sample_for_U_update):
+        total_positive = len(self.R[rel_ind])
+        total_possible = self.vocab_size**2
+        if sample_for_U_update:
+            positive_for_a_word = len(self.RposU[rel_ind][w_ind])  if w_ind in self.RposU[rel_ind] else 0
+        else:
+            positive_for_a_word = len(self.RposV[rel_ind][w_ind]) if w_ind in self.RposV[rel_ind] else 0
+
+        word_load = positive_for_a_word / total_positive
+
+        return (word_load * self.proportion_positive + (self.vocab_size - positive_for_a_word)/(total_possible - total_positive) * (1-self.proportion_positive))
+
 
     def get_samples_for_w(self, w_ind, sample_for_U_update=True):
         """
@@ -424,6 +437,17 @@ class Model:
 
                 neg_w = expected_number_of_negative / len(neg_vissub) if len(neg_vissub) else None
 
+                baseline_rate_w = self.get_word_prob_selected(w_ind, i, sample_for_U_update)
+                baseline_weight = baseline_rate_w * self.sample_size_B / self.sample_size_w
+
+                if pos_w is not None:
+                    pos_w *= baseline_weight
+                if neg_w is not None:
+                    neg_w *= baseline_weight
+
+
+
+
                 ws = [pos_w] * len(vissub) + [neg_w] * len(neg_vissub)
 
                 vissub = vissub + neg_vissub
@@ -551,6 +575,10 @@ class Model:
         else:
             U1 = self.U
             V1 = self.V
+        print(U1.size())
+        print(V1.size())
+        print(self.B[r].size())
+
         vs = (U1[w].view(1, -1) @ self.B[r]) @ V1.t()
         us = (U1 @ (self.B[r] @ V1[w]))
         ubest = [self.i_to_w[x] for x in np.argsort(np.abs(1 - us.cpu().numpy())) if x in possible_us][:top]
