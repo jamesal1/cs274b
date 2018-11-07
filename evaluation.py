@@ -207,23 +207,18 @@ for i, r in enumerate(mt.relation_names):
     print(r)
     if r == "co":
         continue
+    def getActivations(triples):
+        us, vs, _ = zip(*triples)
+        us, vs = torch.LongTensor(us).cuda(), torch.LongTensor(vs).cuda()
+        return list(mt.forward(us, vs, i).data.cpu().numpy())
 
-    ###
-    us = []
-    vs = []
-    train_acts = []
 
-    us, vs, _ = zip(*relation_triples_train[r])
-    us, vs = torch.LongTensor(us).cuda(), torch.LongTensor(vs).cuda()
-    train_acts.extend(list(mt.forward(us, vs, i).data.cpu().numpy()))
+    def getNegativeTriples():
 
-    us = []
-    vs = []
-    test_acts = []
-    us, vs, _ = zip(*relation_triples_test[r])
-    us, vs = torch.LongTensor(us).cuda(), torch.LongTensor(vs).cuda()
 
-    test_acts.extend(list(mt.forward(us, vs, i).data.cpu().numpy()))
+
+    train_acts = getActivations(relation_triples_train[r])
+    test_acts = getActivations(relation_triples_test[r])
 
 
 
