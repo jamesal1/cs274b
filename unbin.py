@@ -5,6 +5,10 @@ record2 = struct.Struct('=iid')
 record3 = struct.Struct('@iid')
 import pickle as pkl
 
+
+
+
+
 def getCooccurrenceMatrix(vocab_size):
     file_loc="data/co_vocab_size_{}.pkl".format(vocab_size)
     if not os.path.exists(file_loc):

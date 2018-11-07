@@ -11,6 +11,8 @@ from torch.autograd import Variable
 
 import time
 
+import pdb
+
 def intlist(arr):
     return [int(i) for i in arr]
 
@@ -791,6 +793,7 @@ class ModelTorch(nn.Module):
 
         Us = U1[us_ind]
         Vs = V1[vs_ind]
+
         act = ((Us @ self.B[r_ind]) * Vs).sum(dim=1)
 
         return act

@@ -10,6 +10,7 @@ vocab_size = settings.vocab_size
 with open("data/relations_mat.pkl", "rb") as f:
     relmat = pkl.load(f)
 
+print(relmat["/r/Antonym"][:100])
 with open("data/co.pkl", "rb") as f:
     comat = pkl.load(f)
 
@@ -38,46 +39,46 @@ relmat['/r/Antonym'] = relmat_old['/r/Antonym']
 # relmat['/r/RelatedTo'] = relmat_old['/r/RelatedTo']
 relmat['/r/Synonym'] = relmat_old['/r/Synonym']
 
-mt = ModelTorch(vocab, relmat, embedding_dimension=50, lambdaB=settings.reg_B, lambdaUV=settings.reg_B,
-                logistic=settings.logistic, co_is_identity=settings.co_is_identity,
-                sampling_scheme=settings.sampling_scheme,
-                proportion_positive=settings.proportion_positive, sample_size_B=settings.sample_size_B)
+# mt = ModelTorch(vocab, relmat, embedding_dimension=50, lambdaB=settings.reg_B, lambdaUV=settings.reg_B,
+#                 logistic=settings.logistic, co_is_identity=settings.co_is_identity,
+#                 sampling_scheme=settings.sampling_scheme,
+#                 proportion_positive=settings.proportion_positive, sample_size_B=settings.sample_size_B)
 
-# relmat["co"] = comat
-# m = Model(vocab, relmat, embedding_dimension=5, lambdaB=settings.reg_B, lambdaUV=settings.reg_UV,
-#           logistic=settings.logistic, co_is_identity=settings.co_is_identity,
-#           sampling_scheme=settings.sampling_scheme, proportion_positive=settings.proportion_positive)
+relmat["co"] = comat
+m = Model(vocab, relmat, embedding_dimension=5, lambdaB=settings.reg_B, lambdaUV=settings.reg_UV,
+          logistic=settings.logistic, co_is_identity=settings.co_is_identity,
+          sampling_scheme=settings.sampling_scheme, proportion_positive=settings.proportion_positive)
 
 # embs usually 5, for simplicity
 
-optimizer = torch.optim.Adam(mt.parameters())
-
-lls = []
-accs = []
-
-print_every = 50
-
-for i in range(10000):
-
-    if i % print_every == 0:
-        print("#######################")
-        print("Update {}".format(i))
-        print("#######################")
-
-    ll, acc = mt.estimateLL(verbose= (i % print_every == 0))
-    lls.append(ll.data)
-    accs.append(acc)
-
-    nll = -ll
-    nll.backward()
-    optimizer.step()
-    optimizer.zero_grad()
-
-    if i % print_every == 0:
-        print("#######################")
-        print("Update {}".format(i))
-        print("#######################")
-
+# optimizer = torch.optim.Adam(mt.parameters())
+#
+# lls = []
+# accs = []
+#
+# print_every = 50
+#
+# for i in range(10000):
+#
+#     if i % print_every == 0:
+#         print("#######################")
+#         print("Update {}".format(i))
+#         print("#######################")
+#
+#     ll, acc = mt.estimateLL(verbose= (i % print_every == 0))
+#     lls.append(ll.data)
+#     accs.append(acc)
+#
+#     nll = -ll
+#     nll.backward()
+#     optimizer.step()
+#     optimizer.zero_grad()
+#
+#     if i % print_every == 0:
+#         print("#######################")
+#         print("Update {}".format(i))
+#         print("#######################")
+#
 
 #for proportion_positive in [0.01, 0.1, 0.2, 0.3, 0.5]:
 # for proportion_positive in [0.3, 0.5]:
@@ -173,7 +174,7 @@ for i in range(10000):
 #                    sampling_scheme=settings.sampling_scheme, proportion_positive=settings.proportion_positive, sample_size_B=settings.sample_size_B)
 #mt.load("./ReportPlots/7000wordsGradient5000sampleSize5000updates1e-3reg/proppositive0.1_reg1e-05.pkl")
 
-if __name__ == "__main__" and False:
+if __name__ == "__main__":
     start = time.time()
     estimates = [m.estimateLL()]
     print("Likelihood estimation time:", time.time() - start)
