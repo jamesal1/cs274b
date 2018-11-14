@@ -945,7 +945,7 @@ class ModelTorch(nn.Module):
             self.logistic = state["logistic"]
 
     #convenience method that takes in triples or u,v lists and outputs the relationship activations.
-    def getActivations(self,rel,*args):
+    def getActivations(self, rel, *args):
         if len(args)==1:
             if len(args[0]) == 0:
                 return []
