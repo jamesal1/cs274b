@@ -751,32 +751,10 @@ class ModelTorch(nn.Module):
         self.Rpos = [set([(int(ui), int(vi)) for ui, vi, _ in r]) for r in self.R]
         print("Rpos initialization time: {}".format(time.time() - start))
         start = time.time()
-        self.Rval = [defaultdict(lambda: settings.zero_value if i != self.co_ind else 0,
-                                 [((int(ui), int(vi)), val) for ui, vi, val in r]) for i, r in
+        self.Rval = [dict([((int(ui), int(vi)), val) for ui, vi, val in r]) for i, r in
                      enumerate(self.R)]  # change 0
         print("Rval initialization time: {}".format(time.time() - start))
 
-        start = time.time()
-        self.RposU = []
-        self.RposV = []
-        self.RposU2 = []  # only store indexes
-        self.RposV2 = []  # only store indexes
-        for r in self.R:
-            du = defaultdict(lambda: set())
-            dv = defaultdict(lambda: set())
-
-            for ui, vi, rel in r:
-                du[ui].add((int(vi), rel))
-                dv[vi].add((int(ui), rel))
-
-            self.RposU += [du]
-            self.RposV += [dv]
-
-        self.Rval = [dict(dd) for dd in self.Rval]
-        self.RposU = [dict(dd) for dd in self.RposU]
-        self.RposV = [dict(dd) for dd in self.RposV]
-
-        print("Pos dictionaries initialization time: {}".format(time.time() - start))
 
     def forward(self, us_ind, vs_ind, r_ind):
 
@@ -910,6 +888,7 @@ class ModelTorch(nn.Module):
         """
         Find closest pairs for a word in a given relation
         """
+        raise NotImplemented #RposU not used anymore
         possible_us = self.RposU[r] # change? why restrict?
         possible_vs = self.RposV[r]
 
@@ -964,3 +943,17 @@ class ModelTorch(nn.Module):
             self.co_is_identity = state["co_is_identity"]
             self.lin = state["lin"]
             self.logistic = state["logistic"]
+
+    #convenience method that takes in triples or u,v lists and outputs the relationship activations.
+    def getActivations(self,rel,*args):
+        if len(args)==1:
+            if len(args[0]) == 0:
+                return []
+            us, vs, _ = zip(*(args[0]))
+        else:
+            us = args[0]
+            vs = args[1]
+            if len(us) == 0:
+                return []
+        us, vs = torch.LongTensor(us).cuda(), torch.LongTensor(vs).cuda()
+        return list(self.forward(us, vs, rel).data.cpu().numpy())

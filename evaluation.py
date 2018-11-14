@@ -1,4 +1,4 @@
-
+import pathlib
 from model import Model, ModelTorch
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,6 +7,8 @@ import time
 import settings
 import random
 import pdb
+
+plt.ioff() # avoid showing figures by default
 
 from utils import getCooccurrenceMatrix, getVocab, getRelationNumericTriples
 
@@ -52,22 +54,19 @@ relation_triples_train["co"] = cooccurrence_triples
 relation_triples_test["co"] = cooccurrence_triples
 
 ### load and create the model
-mt = ModelTorch(getVocab(settings.vocab_size), relation_triples_train, embedding_dimension=50, lambdaB=settings.reg_B, lambdaUV=settings.reg_B,
+mt = ModelTorch(getVocab(settings.vocab_size), relation_triples_train, embedding_dimension=settings.embedding_dimension, lambdaB=settings.reg_B, lambdaUV=settings.reg_B,
                 logistic=settings.logistic, co_is_identity=settings.co_is_identity,
                 sampling_scheme=settings.sampling_scheme,
                 proportion_positive=settings.proportion_positive, sample_size_B=settings.sample_size_B)
 
-
 ### train the model
-
 optimizer = torch.optim.Adam(mt.parameters())
-
 lls = []
 accs = []
 
 print_every = 50
 
-for i in range(200):
+for i in range(10):
 
     if i % print_every == 0:
         print("#######################")
@@ -77,19 +76,21 @@ for i in range(200):
     ll, acc = mt.estimateLL(verbose= (i % print_every == 0))
     lls.append(ll.data)
     accs.append(acc)
-
     nll = -ll
     nll.backward()
     optimizer.step()
     optimizer.zero_grad()
-
     if i % print_every == 0:
         print("#######################")
         print("Update {}".format(i))
         print("#######################")
-
 ### evaluate performance, save the report in a readable form
 
+path = "evaluation/vocab_size{}_test{}_dim{}_lambdaB{}UV{}_logit{}_coId{}_sampling{}_pos{}_B{}_seed{}/"
+path = path.format(settings.vocab_size,settings.test_frac,settings.embedding_dimension,settings.reg_B,settings.reg_UV,
+                   settings.logistic,settings.co_is_identity,settings.sampling_scheme,settings.proportion_positive,
+                   settings.sample_size_B,settings.seed)
+pathlib.Path(path).mkdir(parents=True, exist_ok=True)
 ### Print likelihoods
 
 plt.figure()
@@ -104,95 +105,54 @@ plt.ylabel("correlation with correct answers")
 
 
 ###
-us = []
-vs = []
-train_acts = []
 
-for i, r in enumerate(mt.relation_names):
-    print(r)
-    if r == "co":
-        continue
-    us, vs, _ = zip(*relation_triples_train[r])
-    us, vs = torch.LongTensor(us).cuda(), torch.LongTensor(vs).cuda()
-
-    train_acts.extend(list(mt.forward(us, vs, i).data.cpu().numpy()))
-
-us = []
-vs = []
-test_acts = []
-
-for i, r in enumerate(mt.relation_names):
-    if r == "co":
-        continue
-    us, vs, _ = zip(*relation_triples_test[r])
-    us, vs = torch.LongTensor(us).cuda(), torch.LongTensor(vs).cuda()
-
-    test_acts.extend(list(mt.forward(us, vs, i).data.cpu().numpy()))
-## !save settings alongside the model
-bins = np.linspace(-2, 2, 300)
-
-plt.figure()
-plt.hist(train_acts, bins=bins, alpha=0.5, label="train", color="green")
-plt.hist(test_acts, bins=bins, alpha=0.5, label="test", color="red")
-# plt.hist(np.arange(100), alpha=0.5, label="test", color="red")
-plt.legend(loc='upper right')
-plt.show()
-
-## Compare with negatives
-
-
-us = []
-vs = []
-train_acts_neg = []
-
-for i, r in enumerate(mt.relation_names):
-    print(r)
-    if r == "co":
-        continue
-    us, vs, _ = zip(*relation_triples_train[r])
-
+def getNegativeUVs(triples):
+    if len(triples) == 0:
+        return [], []
+    us, vs, _ = zip(*triples)
     us_neg = np.random.choice(settings.vocab_size, len(us))
     vs_neg = np.random.choice(settings.vocab_size, len(us))
-    us, vs = torch.LongTensor(us).cuda(), torch.LongTensor(vs).cuda()
-    us_neg, vs_neg = torch.LongTensor(us_neg).cuda(), torch.LongTensor(vs_neg).cuda()
 
-    train_acts_neg.extend(list(mt.forward(us_neg, vs, i).data.cpu().numpy()))
-    train_acts_neg.extend(list(mt.forward(us, vs_neg, i).data.cpu().numpy()))
+    return list(us) + [int(x) for x in us_neg], [int(x) for x in vs_neg] + list(vs)
+
+def compareHistograms(activations, title):
+    bins = np.linspace(-2, 2, 300)
+
+    fig = plt.figure()
+    plt.title(title)
+    plt.hist(activations[0][0], bins=bins, alpha=0.5, label=activations[0][1], color="green")
+    plt.hist(activations[1][0], bins=bins, alpha=0.5, label=activations[1][1], color="red")
+    # plt.hist(np.arange(100), alpha=0.5, label="test", color="red")
+    plt.legend(loc='upper right')
+    # plt.show()
+    plt.savefig(path+title+".png")
+    plt.close(fig)
 
 
-
-us = []
-vs = []
+train_acts = []
+test_acts = []
+train_acts_neg = []
 test_acts_neg = []
 
 for i, r in enumerate(mt.relation_names):
     print(r)
     if r == "co":
         continue
-    us, vs, _ = zip(*relation_triples_test[r])
 
-    us_neg = np.random.choice(settings.vocab_size, len(us))
-    vs_neg = np.random.choice(settings.vocab_size, len(us))
-    us, vs = torch.LongTensor(us).cuda(), torch.LongTensor(vs).cuda()
-    us_neg, vs_neg = torch.LongTensor(us_neg).cuda(), torch.LongTensor(vs_neg).cuda()
+    train_acts.extend(mt.getActivations(i, relation_triples_train[r]))
+    test_acts.extend(mt.getActivations(i, relation_triples_test[r]))
+    train_acts_neg.extend(mt.getActivations(i, *getNegativeUVs(relation_triples_train[r])))
+    test_acts_neg.extend(mt.getActivations(i, *getNegativeUVs(relation_triples_test[r])))
 
-    test_acts_neg.extend(list(mt.forward(us_neg, vs, i).data.cpu().numpy()))
-    test_acts_neg.extend(list(mt.forward(us, vs_neg, i).data.cpu().numpy()))
+## !save settings alongside the model
+bins = np.linspace(-2, 2, 300)
 
+compareHistograms([(train_acts,"train"),(test_acts,"test")],"traintest")
 
-plt.figure()
-plt.hist(test_acts, bins=bins, alpha=0.5, label="test positive", color="green")
-plt.hist(test_acts_neg, bins=bins, alpha=0.5, label="test negative", color="red")
-# plt.hist(np.arange(100), alpha=0.5, label="test", color="red")
-plt.legend(loc='upper right')
-plt.show()
+## Compare with negatives
+compareHistograms([(train_acts,"train positive"),(train_acts_neg,"train negative")],"train")
+compareHistograms([(test_acts,"test positive"),(test_acts_neg,"test negative")],"test")
 
-plt.figure()
-plt.hist(train_acts, bins=bins, alpha=0.5, label="train positive", color="green")
-plt.hist(train_acts_neg, bins=bins, alpha=0.5, label="train negative", color="red")
-# plt.hist(np.arange(100), alpha=0.5, label="test", color="red")
-plt.legend(loc='upper right')
-plt.show()
 
 
 ## Compare with negatives for specific relations
@@ -202,72 +162,12 @@ plt.show()
 
 for i, r in enumerate(mt.relation_names):
 
-    if i > 3:
-        break
-    print(r)
-    if r == "co":
-        continue
-    def getActivations(triples):
-        us, vs, _ = zip(*triples)
-        us, vs = torch.LongTensor(us).cuda(), torch.LongTensor(vs).cuda()
-        return list(mt.forward(us, vs, i).data.cpu().numpy())
+    train_acts = mt.getActivations(i, relation_triples_train[r])
+    test_acts = mt.getActivations(i, relation_triples_test[r])
 
-
-    def getNegativeTriples():
-
-
-
-    train_acts = getActivations(relation_triples_train[r])
-    test_acts = getActivations(relation_triples_test[r])
-
-
-
-    us = []
-    vs = []
-    train_acts_neg = []
-
-
-    us, vs, _ = zip(*relation_triples_train[r])
-
-    us_neg = np.random.choice(settings.vocab_size, len(us))
-    vs_neg = np.random.choice(settings.vocab_size, len(us))
-    us, vs = torch.LongTensor(us).cuda(), torch.LongTensor(vs).cuda()
-    us_neg, vs_neg = torch.LongTensor(us_neg).cuda(), torch.LongTensor(vs_neg).cuda()
-
-    train_acts_neg.extend(list(mt.forward(us_neg, vs, i).data.cpu().numpy()))
-    train_acts_neg.extend(list(mt.forward(us, vs_neg, i).data.cpu().numpy()))
-
-
-
-    us = []
-    vs = []
-    test_acts_neg = []
-
-    us, vs, _ = zip(*relation_triples_test[r])
-
-    us_neg = np.random.choice(settings.vocab_size, len(us))
-    vs_neg = np.random.choice(settings.vocab_size, len(us))
-    us, vs = torch.LongTensor(us).cuda(), torch.LongTensor(vs).cuda()
-    us_neg, vs_neg = torch.LongTensor(us_neg).cuda(), torch.LongTensor(vs_neg).cuda()
-
-    test_acts_neg.extend(list(mt.forward(us_neg, vs, i).data.cpu().numpy()))
-    test_acts_neg.extend(list(mt.forward(us, vs_neg, i).data.cpu().numpy()))
+    train_acts_neg = mt.getActivations(i, *getNegativeUVs(relation_triples_train[r]))
+    test_acts_neg = mt.getActivations(i, *getNegativeUVs(relation_triples_test[r]))
     ## Try full negative?
 
-
-
-    plt.figure()
-    plt.title('Test anwers {}'.format(r))
-    plt.hist(test_acts, bins=bins, alpha=0.5, label="test positive ", color="green")
-    plt.hist(test_acts_neg, bins=bins, alpha=0.5, label="test negative", color="red")
-    # plt.hist(np.arange(100), alpha=0.5, label="test", color="red")
-    plt.legend(loc='upper right')
-    plt.show()
-
-    plt.figure()
-    plt.title('Train anwers {}'.format(r))
-    plt.hist(train_acts, bins=bins, alpha=0.5, label="train positive", color="green")
-    plt.hist(train_acts_neg, bins=bins, alpha=0.5, label="train negative", color="red")
-    # plt.hist(np.arange(100), alpha=0.5, label="test", color="red")
-    plt.legend(loc='upper right')
-    plt.show()
+    compareHistograms([(train_acts, "train positive"), (train_acts_neg, "train negative")], 'Train_answers_{}'.format(r.split("/")[-1]))
+    compareHistograms([(test_acts, "test positive"), (test_acts_neg, "test negative")], 'Test_answers_{}'.format(r.split("/")[-1]))

@@ -18,8 +18,15 @@ sample_size_B = 50000 # since it's SGD in any case # was 50000 # usually 100000
 # sampling_scheme = "uniform"
 sampling_scheme = "proportional"
 proportion_positive = 0.5 # ignored if sampling scheme is uniform # usually 0.3
-
+embedding_dimension = 50
 
 logistic = False
 
 co_is_identity = False
+
+seed = 274
+
+import random, numpy.random, torch
+random.seed(seed)
+numpy.random.seed(seed)
+torch.manual_seed(seed)
