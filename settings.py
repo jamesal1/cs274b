@@ -12,7 +12,7 @@ reg_UV = 1e-3
 # reg_B = 0
 # reg_UV = 0
 
-sample_size_B = 50000 # since it's SGD in any case # was 50000 # usually 100000
+sample_size_B = 5000 # since it's SGD in any case # was 50000 # usually 100000
 
 # sampling_scheme = "complete" # "uniform" or "proportional" or "complete"
 # sampling_scheme = "uniform"
