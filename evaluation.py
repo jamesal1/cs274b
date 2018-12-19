@@ -1,5 +1,5 @@
 import pathlib
-from model import ModelTorch, ModelUnimodal, ModelDistMatch1dUniform
+from model import ModelTorch, ModelUnimodal, ModelDistMatch1dUniform, ModelDistMatch2dUniform
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -112,8 +112,8 @@ for relation, relation_triples in relation_triples.items():
     relation_triples_test[relation] = [relation_triples[i] for i in sample_indices[:test_count]]
     relation_triples_train[relation] = [relation_triples[i] for i in sample_indices[test_count:]]
 
-relation_triples_train["co"] = cooccurrence_triples
-relation_triples_test["co"] = cooccurrence_triples
+#relation_triples_train["co"] = cooccurrence_triples
+#relation_triples_test["co"] = cooccurrence_triples
 
 ### load and create the model
 mt = ModelDistMatch1dUniform(getVocab(settings.vocab_size), relation_triples_train, embedding_dimension=settings.embedding_dimension, lambdaB=settings.reg_B, lambdaUV=settings.reg_B,
@@ -216,3 +216,13 @@ for i, r in enumerate(mt.relation_names):
 
     compareHistograms([(train_acts, "train positive"), (train_acts_neg, "train negative")], 'Train_answers_{}'.format(r.split("/")[-1]), path)
     compareHistograms([(test_acts, "test positive"), (test_acts_neg, "test negative")], 'Test_answers_{}'.format(r.split("/")[-1]), path)
+
+
+###
+
+mt2d = ModelDistMatch2dUniform(getVocab(settings.vocab_size), relation_triples_train, embedding_dimension=settings.embedding_dimension, lambdaB=settings.reg_B, lambdaUV=settings.reg_B,
+                logistic=settings.logistic, co_is_identity=settings.co_is_identity,
+                sampling_scheme=settings.sampling_scheme,
+                proportion_positive=settings.proportion_positive, sample_size_B=settings.sample_size_B)
+
+mt2d.forward([1, 2, 3], [4, 5, 6], 1)

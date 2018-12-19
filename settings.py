@@ -1,4 +1,4 @@
-vocab_size = 7000
+vocab_size = 1000
 zero_value = 0
 
 test_frac = 0.2
@@ -31,4 +31,4 @@ random.seed(seed)
 numpy.random.seed(seed)
 torch.manual_seed(seed)
 
-epochs = 5000
+epochs = 1000

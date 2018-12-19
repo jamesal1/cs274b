@@ -378,7 +378,7 @@ class ModelDistMatch1dUniform(ModelTorch):
         x_sort, x_arg = torch.sort(x, 0)
         x_prime_sort, x_prime_arg = torch.sort(x_prime, 0)
         y_sort, y_arg = torch.sort(y, 0)
-        return -2 * torch.sum((x_sort - y_sort) ** 2) + torch.sum((x_sort - x_prime_sort) ** 2)
+        return 2 * torch.sum((x_sort - y_sort) ** 2) - torch.sum((x_sort - x_prime_sort) ** 2)
 
     def estimateLL(self, verbose=False):
         log_prob = torch.autograd.Variable(torch.zeros((1,)).cuda())
@@ -404,12 +404,17 @@ class ModelDistMatch1dUniform(ModelTorch):
 
             pred = act**2
 
-            log_prob += torch.sum(-pred * y_true_var * ws_var) + torch.sum(
-               torch.log(1 - torch.exp(-pred) + 1e-7) * (1-y_true_var) * ws_var)
+            hinge_threshold = 1
+
+            # add something separate for co oc
+
+            log_prob += torch.sum(-pred * y_true_var * ws_var) \
+                        + 10 * torch.sum(torch.min(torch.zeros_like(act), torch.abs(act) - hinge_threshold) * (1 - y_true_var) * ws_var)
+                        #+ torch.sum(torch.log(1 - torch.exp(-pred) + 1e-7) * (1 - y_true_var) * ws_var)
 
 
 
-            log_prob += self.energyDistance(act_neg) * 10
+            log_prob -= self.energyDistance(act_neg) * 10
 
             log_prob -= self.lambdaB * 0.5 * (self.B[i] ** 2).sum()
 
@@ -436,3 +441,37 @@ class ModelDistMatch1dUniform(ModelTorch):
 
     def getScores(self, rel, *args):
         return [-np.abs(x) for x in self.getActivations(rel, *args)]
+
+
+class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.Btens = [nn.Parameter(torch.randn((self.b_size, self.b_size, 2)).cuda() * 0.001) for _ in range(len(self.relation_names))]
+        if self.co_is_identity:
+            self.Btens[self.co_ind] = nn.Parameter(torch.eye(self.b_size + (2,)).cuda(), requires_grad=False)
+
+    def forward(self, us_ind, vs_ind, r_ind):
+
+        if self.lin:
+            U1 = torch.cat([self.U, nn.Parameter(torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda(),
+                                                 requires_grad=False)], 1)
+            V1 = torch.cat([self.V, nn.Parameter(torch.FloatTensor(torch.ones((self.vocab_size, 1))).cuda(),
+                                                 requires_grad=False)], 1)
+        else:
+            U1 = self.U
+            V1 = self.V
+
+        #return U1, V1
+
+        Us = U1[us_ind]
+        Vs = V1[vs_ind]
+
+        print(Us.shape)
+        print(self.Btens[r_ind].shape)
+        print(Vs.shape)
+
+        act = ((Us @ self.Btens[r_ind]) * Vs.t()[:, :, None]).sum(dim=0) # change to Btens size (2, 51, 51)
+
+        return act
