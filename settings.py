@@ -30,3 +30,5 @@ import random, numpy.random, torch
 random.seed(seed)
 numpy.random.seed(seed)
 torch.manual_seed(seed)
+
+epochs = 5000
