@@ -446,11 +446,103 @@ class ModelDistMatch1dUniform(ModelTorch):
 class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
 
     def __init__(self, *args, **kwargs):
+        self.uniform_range = kwargs.pop("uniform_range", 5)
+        #self.negative_weight = kwargs.pop("negative_weight", 10)
+        self.energy_weight = kwargs.pop("energy_weight", 10)
+        self.energy_slice_count = kwargs.pop("energy_slice_count", 1) #number of slices to take in Sliced Wasserstein Distance
+        #self.hinge_threshold = 1
         super().__init__(*args, **kwargs)
-
+        self.modelName = "ModelDistMatch2dUniform"
         self.Btens = [nn.Parameter(torch.randn((self.b_size, self.b_size, 2)).cuda() * 0.001) for _ in range(len(self.relation_names))]
         if self.co_is_identity:
             self.Btens[self.co_ind] = nn.Parameter(torch.eye(self.b_size + (2,)).cuda(), requires_grad=False)
+
+    #sliced wasserstein distance
+    def energyDistance(self, activations, dist = None):
+        size, dim = activations.shape
+        size = size // 2
+        x = activations[0:size]
+        x_prime = activations[size:2*size]
+        y = torch.rand(*x.shape) * self.uniform_range - self.uniform_range / 2
+        y = Variable(y.cuda(), requires_grad=False)
+        dist = 0
+        for _ in range(self.energy_slice_count):
+            projection = Variable(torch.rand(dim).cuda(), requires_grad=False)
+
+            x_proj, x_arg = torch.sort(x.dot(projection), 0)
+            x_prime_proj, x_prime_arg = torch.sort(x_prime.dot(projection), 0)
+            y_proj, y_arg = torch.sort(y.dot(projection), 0)
+            dist += 2 * torch.sum((x_proj - y_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
+        return dist/self.energy_slice_count
+
+
+
+    def estimateLL(self, verbose=False):
+        log_prob = torch.autograd.Variable(torch.zeros((1,)).cuda())
+
+        correct = 0
+
+        if verbose:
+            print("Estimating log likelihood")
+        for i, r in enumerate(self.R):
+            ## Subsampling true relations
+            samples = self.get_samples_for_B(i)
+            #pos_uis, pos_vis, _, pos_ws = zip(*filter(lambda x:x[2],samples))
+            neg_uis, neg_vis, _, neg_ws = zip(*filter(lambda x: not x[2],samples))
+            uis, vis, rs, ws = zip(*samples)
+
+            y_true = torch.FloatTensor(rs).cuda()
+
+            act = self.forward(intlist(uis), intlist(vis), i)
+            act_neg = self.forward(intlist(neg_uis), intlist(neg_vis), i)
+
+            y_true_var = Variable(y_true, requires_grad=False)
+            ws_var = Variable(torch.FloatTensor(ws).cuda(), requires_grad=False)
+
+            act_l2 = (act**2).sum(dim=1)
+            # act_l1 = torch.abs(act).sum(dim=1)
+
+
+            # add something separate for co oc
+
+            log_prob += torch.sum(-act_l2 * y_true_var * ws_var) \
+            #+ self.negative_weight * torch.sum(torch.min(torch.zeros_like(act_l1), act_l1 - self.hinge_threshold) * (1 - y_true_var) * ws_var)
+            + torch.sum(torch.log(1 - torch.exp(-act_l2) + 1e-7) * (1 - y_true_var) * ws_var)
+
+
+
+            log_prob -= self.energyDistance(act_neg) * self.energy_weight
+
+            log_prob -= self.lambdaB * 0.5 * (self.B[i] ** 2).sum()
+
+            cur_correct = np.corrcoef(-pred.data.cpu().numpy(), y_true.cpu().numpy())[0, 1]  # correlation
+            if verbose:
+                print("Correlation for factor {}: {}".format(self.relation_names[i], cur_correct))
+            if cur_correct != cur_correct:
+                print("nan correlation")
+                cur_correct = 1
+
+            correct += cur_correct
+        log_prob -= self.lambdaUV * 0.5 * ((self.U ** 2).sum() + (self.V ** 2).sum())
+        if verbose:
+            print("Log prob: {}, accuracy: {}".format(log_prob, correct / len(self.R)))
+        return log_prob, correct / len(self.R)
+
+    def __str__(self):
+        path = "{}_vocab_size{}_dim{}_lambdaB{}UV{}_logit{}_coId{}_sampling{}_pos{}_B{}_UniRange{}_EnergyWeight{}_Slices{},"
+        return path.format(self.modelName, self.vocab_size,  self.emb_size, self.lambdaB,
+                           self.lambdaUV,
+                           self.logistic, self.co_is_identity, self.sampling_scheme,
+                           self.proportion_positive,
+                           self.sample_size_B,
+                           self.uniform_range,
+                           self.energy_weight,
+                           self.energy_slice_count
+        )
+
+    def getScores(self, rel, *args):
+        return [-(x**2).sum() for x in self.getActivations(rel, *args)]
+
 
     def forward(self, us_ind, vs_ind, r_ind):
 
