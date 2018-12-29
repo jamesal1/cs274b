@@ -134,7 +134,7 @@ accs = []
 print_every = 50
 
 
-for i in range(settings.epochs):
+for i in range(0):#range(settings.epochs):
 
     if i % print_every == 0:
         print("#######################")
@@ -226,3 +226,45 @@ mt2d = ModelDistMatch2dUniform(getVocab(settings.vocab_size), relation_triples_t
                 proportion_positive=settings.proportion_positive, sample_size_B=settings.sample_size_B)
 
 mt2d.forward([1, 2, 3], [4, 5, 6], 1)
+
+def plot_2d_acts(ax, pos_acts, neg_acts):
+    all_acts = np.vstack([pos_acts, neg_acts])
+    colors = np.zeros(all_acts.shape[0])
+    colors[0:pos_acts.shape[0]] = 1
+    scatterplot = ax.scatter(all_acts[:, 0], all_acts[:, 1], c=colors)
+    return scatterplot
+
+def create_acts(m, relation_triples_train, relation_triples_test):
+
+    '''m - model instance, implementing get activations method'''
+
+    train_acts = []
+    test_acts = []
+    train_acts_neg = []
+    test_acts_neg = []
+
+    for i, r in enumerate(m.relation_names):
+        print(r)
+        if r == "co":
+            continue
+
+        train_acts.extend(m.getActivations(i, relation_triples_train[r]))
+        test_acts.extend(m.getActivations(i, relation_triples_test[r]))
+        train_acts_neg.extend(m.getActivations(i, *getNegativeUVs(relation_triples_train[r])))
+        test_acts_neg.extend(m.getActivations(i, *getNegativeUVs(relation_triples_test[r])))
+
+        train_acts, test_acts, train_acts_neg, test_acts_neg = map(np.array, [train_acts, test_acts, train_acts_neg, test_acts_neg])
+
+
+
+        fig, ax = plt.subplots()
+        plot_2d_acts(ax, train_acts, train_acts_neg)
+        fig.show()
+
+        return
+
+    return train_acts, test_acts, train_acts_neg, test_acts_neg
+
+#train_acts, test_acts, train_acts_neg, test_acts_neg = map(np.array, create_acts(mt2d, relation_triples_train, relation_triples_test))
+train_acts, test_acts, train_acts_neg, test_acts_neg = create_acts(mt2d, relation_triples_train, relation_triples_test)
+
