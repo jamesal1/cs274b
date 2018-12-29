@@ -234,7 +234,7 @@ def plot_2d_acts(ax, pos_acts, neg_acts):
     scatterplot = ax.scatter(all_acts[:, 0], all_acts[:, 1], c=colors)
     return scatterplot
 
-def create_acts(m, relation_triples_train, relation_triples_test):
+def create_acts(m, relation_triples_train, relation_triples_test, i):
 
     '''m - model instance, implementing get activations method'''
 
@@ -243,28 +243,53 @@ def create_acts(m, relation_triples_train, relation_triples_test):
     train_acts_neg = []
     test_acts_neg = []
 
-    for i, r in enumerate(m.relation_names):
-        print(r)
-        if r == "co":
-            continue
+    #for i, r in enumerate(m.relation_names):
+    #print(r)
+    #if r == "co":
+    #    continue
 
-        train_acts.extend(m.getActivations(i, relation_triples_train[r]))
-        test_acts.extend(m.getActivations(i, relation_triples_test[r]))
-        train_acts_neg.extend(m.getActivations(i, *getNegativeUVs(relation_triples_train[r])))
-        test_acts_neg.extend(m.getActivations(i, *getNegativeUVs(relation_triples_test[r])))
+    train_acts.extend(m.getActivations(i, relation_triples_train[r]))
+    test_acts.extend(m.getActivations(i, relation_triples_test[r]))
+    train_acts_neg.extend(m.getActivations(i, *getNegativeUVs(relation_triples_train[r])))
+    test_acts_neg.extend(m.getActivations(i, *getNegativeUVs(relation_triples_test[r])))
 
-        train_acts, test_acts, train_acts_neg, test_acts_neg = map(np.array, [train_acts, test_acts, train_acts_neg, test_acts_neg])
+    train_acts, test_acts, train_acts_neg, test_acts_neg = map(np.array, [train_acts, test_acts, train_acts_neg, test_acts_neg])
 
 
+    fig, ax = plt.subplots()
+    plot_2d_acts(ax, train_acts, train_acts_neg)
+    fig.show()
 
-        fig, ax = plt.subplots()
-        plot_2d_acts(ax, train_acts, train_acts_neg)
-        fig.show()
-
-        return
+    return
 
     return train_acts, test_acts, train_acts_neg, test_acts_neg
 
 #train_acts, test_acts, train_acts_neg, test_acts_neg = map(np.array, create_acts(mt2d, relation_triples_train, relation_triples_test))
-train_acts, test_acts, train_acts_neg, test_acts_neg = create_acts(mt2d, relation_triples_train, relation_triples_test)
+lp, corr = mt2d.estimateLL()
+#train_acts, test_acts, train_acts_neg, test_acts_neg = create_acts(mt2d, relation_triples_train, relation_triples_test)
 
+### train the model
+optimizer = torch.optim.Adam(mt2d.parameters())
+lls = [lp]
+accs = [corr]
+
+for i in range(300):#range(settings.epochs):
+
+    if i % print_every == 0:
+        print("#######################")
+        print("Update {}".format(i))
+        print("#######################")
+        ### evaluate performance, save the report in a readable form
+##        getAUC(mt, relation_triples_train, relation_triples_test, path, i)
+
+    ll, acc = mt2d.estimateLL(verbose= (i % print_every == 0))
+    lls.append(ll.data)
+    accs.append(acc)
+    nll = -ll
+    nll.backward()
+    optimizer.step()
+    optimizer.zero_grad()
+    if i % print_every == 0:
+        print("#######################")
+        print("Update {}".format(i))
+        print("#######################")
