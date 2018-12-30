@@ -453,30 +453,55 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
         #self.hinge_threshold = 1
         super().__init__(*args, **kwargs)
         self.modelName = "ModelDistMatch2dUniform"
-        self.Btens = [nn.Parameter(torch.randn((self.b_size, self.b_size, 2)).cuda() * 0.001) for _ in range(len(self.relation_names))]
-        if self.co_is_identity:
+        self.Btens = nn.ParameterList([nn.Parameter(torch.randn((self.b_size, self.b_size, 2)).cuda() * 0.1) for _ in range(len(self.relation_names))])
+
+        if self.co_is_identity: ## TO DO
             self.Btens[self.co_ind] = nn.Parameter(torch.eye(self.b_size + (2,)).cuda(), requires_grad=False)
 
     #sliced wasserstein distance
-    def energyDistance(self, activations, dist = None):
+    def energyDistance(self, activations, dist=None):
         size, dim = activations.shape
         size = size // 2
 
         #pdb.set_trace()
-        x = activations[0:size]
-        x_prime = activations[size:2*size]
-        y = torch.rand(*x.shape) * self.uniform_range - self.uniform_range / 2
+        x = activations[0:size, :]
+        x_prime = activations[size:2*size, :]
+        y = torch.rand(x.shape) * self.uniform_range - self.uniform_range / 2
+        #y = y + 10 # Temporarily force y to simply be the same vector all the time
+
+
         y = Variable(y.cuda(), requires_grad=False)
         dist = 0
+
         for _ in range(self.energy_slice_count):
-            tmp = torch.rand((dim, 1))
-            tmp = tmp/torch.norm(tmp)
+            tmp = torch.randn((dim, 1)) # * 0 + 1
+            #tmp[0, 0] = 0
+            tmp = tmp / torch.norm(tmp)
             projection = Variable(tmp.cuda(), requires_grad=False)
 
             x_proj, x_arg = torch.sort(x @ projection)
             x_prime_proj, x_prime_arg = torch.sort(x_prime @ projection)
             y_proj, y_arg = torch.sort(y @ projection)
+
             dist += 2 * torch.sum((x_proj - y_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
+
+           # dist += torch.mean((x - y) ** 2)
+
+            # Quick hack to add the orthogonality part (for 2d only)
+
+            tmp2 = tmp.clone()
+            tmp[0] = tmp2[1]
+            tmp[1] = -tmp2[0]
+
+            projection = Variable(tmp.cuda(), requires_grad=False)
+
+            x_proj, x_arg = torch.sort(x @ projection)
+            x_prime_proj, x_prime_arg = torch.sort(x_prime @ projection)
+            y_proj, y_arg = torch.sort(y @ projection)
+
+            dist += 2 * torch.sum((x_proj - y_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
+
+        #    pdb.set_trace()
 
         return dist / self.energy_slice_count
 
@@ -493,7 +518,7 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
             ## Subsampling true relations
             samples = self.get_samples_for_B(i)
             #pos_uis, pos_vis, _, pos_ws = zip(*filter(lambda x:x[2],samples))
-            neg_uis, neg_vis, _, neg_ws = zip(*filter(lambda x: not x[2],samples))
+            neg_uis, neg_vis, _, neg_ws = zip(*filter(lambda x: not x[2], samples))
             uis, vis, rs, ws = zip(*samples)
 
             y_true = torch.FloatTensor(rs).cuda()
@@ -510,14 +535,16 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
 
             # add something separate for co oc
 
-            log_prob += torch.sum(-act_l2 * y_true_var * ws_var) + torch.sum(torch.log(1 - torch.exp(-act_l2) + 1e-7) * (1 - y_true_var) * ws_var)
+            #log_prob += torch.sum(-act_l2 * y_true_var * ws_var) + torch.sum(torch.log(1 - torch.exp(-act_l2) + 1e-7) * (1 - y_true_var) * ws_var)
             #+ self.negative_weight * torch.sum(torch.min(torch.zeros_like(act_l1), act_l1 - self.hinge_threshold) * (1 - y_true_var) * ws_var)
 
+           # pdb.set_trace()
+            ED = self.energyDistance(act_neg)
+            #print(ED)
+            #pdb.set_trace()
+            log_prob -= ED * self.energy_weight
 
-
-            log_prob -= self.energyDistance(act_neg) * self.energy_weight
-
-            log_prob -= self.lambdaB * 0.5 * (self.B[i] ** 2).sum()
+            #log_prob -= self.lambdaB * 0.5 * (self.B[i] ** 2).sum()
 
             cur_correct = np.corrcoef(-act_l2.data.cpu().numpy(), y_true.cpu().numpy())[0, 1]  # correlation
             if verbose:
@@ -527,7 +554,7 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
                 cur_correct = 1
 
             correct += cur_correct
-        log_prob -= self.lambdaUV * 0.5 * ((self.U ** 2).sum() + (self.V ** 2).sum())
+        #log_prob -= self.lambdaUV * 0.5 * ((self.U ** 2).sum() + (self.V ** 2).sum())
         if verbose:
             print("Log prob: {}, accuracy: {}".format(log_prob, correct / len(self.R)))
         return log_prob, correct / len(self.R)
