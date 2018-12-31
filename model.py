@@ -494,10 +494,9 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
             tmp[1] = -tmp2[0]
 
             projection = Variable(tmp.cuda(), requires_grad=False)
-
-            x_proj, x_arg = torch.sort(x @ projection)
-            x_prime_proj, x_prime_arg = torch.sort(x_prime @ projection)
-            y_proj, y_arg = torch.sort(y @ projection)
+            x_proj, x_arg = torch.sort((x @ projection).flatten())
+            x_prime_proj, x_prime_arg = torch.sort((x_prime @ projection).flatten())
+            y_proj, y_arg = torch.sort((y @ projection).flatten())
 
             #dist += 2 * torch.sum((x_proj - y_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
             dist += torch.sum((x_proj - y_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
