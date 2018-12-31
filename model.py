@@ -499,7 +499,9 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
             x_prime_proj, x_prime_arg = torch.sort(x_prime @ projection)
             y_proj, y_arg = torch.sort(y @ projection)
 
-            dist += 2 * torch.sum((x_proj - y_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
+            #dist += 2 * torch.sum((x_proj - y_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
+            dist += torch.sum((x_proj - y_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
+            #dist += -torch.sum((x_proj - x_prime_proj) ** 2)
 
         #    pdb.set_trace()
 

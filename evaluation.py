@@ -276,7 +276,7 @@ optimizer = torch.optim.Adam(mt2d.parameters())
 lls = [lp]
 accs = [corr]
 
-for i in range(4000):#range(settings.epochs):
+for i in range(300):#range(settings.epochs):
 
     if i % print_every == 0:
         print("#######################")
