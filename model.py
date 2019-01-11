@@ -448,7 +448,7 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
     def __init__(self, *args, **kwargs):
         self.uniform_range = kwargs.pop("uniform_range", 5)
         #self.negative_weight = kwargs.pop("negative_weight", 10)
-        self.energy_weight = kwargs.pop("energy_weight", 10)
+        self.energy_weight = kwargs.pop("energy_weight", 1)
         self.energy_slice_count = kwargs.pop("energy_slice_count", 1) #number of slices to take in Sliced Wasserstein Distance
         #self.hinge_threshold = 1
         super().__init__(*args, **kwargs)
@@ -458,34 +458,30 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
         if self.co_is_identity: ## TO DO
             self.Btens[self.co_ind] = nn.Parameter(torch.eye(self.b_size + (2,)).cuda(), requires_grad=False)
 
+
     #sliced wasserstein distance
     def energyDistance(self, activations, dist=None):
         size, dim = activations.shape
         size = size // 2
 
-        #pdb.set_trace()
         x = activations[0:size, :]
         x_prime = activations[size:2*size, :]
         y = torch.rand(x.shape) * self.uniform_range - self.uniform_range / 2
-        #y = y + 10 # Temporarily force y to simply be the same vector all the time
-
 
         y = Variable(y.cuda(), requires_grad=False)
         dist = 0
 
         for _ in range(self.energy_slice_count):
             tmp = torch.randn((dim, 1)) # * 0 + 1
-            #tmp[0, 0] = 0
+
             tmp = tmp / torch.norm(tmp)
             projection = Variable(tmp.cuda(), requires_grad=False)
 
-            x_proj, x_arg = torch.sort(x @ projection)
-            x_prime_proj, x_prime_arg = torch.sort(x_prime @ projection)
-            y_proj, y_arg = torch.sort(y @ projection)
+            x_proj, x_arg = torch.sort(x @ projection, 0)
+            x_prime_proj, x_prime_arg = torch.sort(x_prime @ projection, 0)
+            y_proj, y_arg = torch.sort(y @ projection, 0)
 
-            dist += 2 * torch.sum((x_proj - y_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
-
-           # dist += torch.mean((x - y) ** 2)
+            dist += 2 * torch.mean((x_proj - y_proj) ** 2) - torch.mean((x_proj - x_prime_proj) ** 2)
 
             # Quick hack to add the orthogonality part (for 2d only)
 
@@ -494,21 +490,17 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
             tmp[1] = -tmp2[0]
 
             projection = Variable(tmp.cuda(), requires_grad=False)
-            x_proj, x_arg = torch.sort((x @ projection).flatten())
-            x_prime_proj, x_prime_arg = torch.sort((x_prime @ projection).flatten())
-            y_proj, y_arg = torch.sort((y @ projection).flatten())
+            x_proj, x_arg = torch.sort(x @ projection, 0)
+            x_prime_proj, x_prime_arg = torch.sort(x_prime @ projection, 0)
+            y_proj, y_arg = torch.sort(y @ projection, 0)
 
-            #dist += 2 * torch.sum((x_proj - y_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
-            dist += torch.sum((x_proj - y_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
-            #dist += -torch.sum((x_proj - x_prime_proj) ** 2)
-
-        #    pdb.set_trace()
+            dist += torch.mean((x_proj - y_proj) ** 2) - torch.mean((x_proj - x_prime_proj) ** 2)
 
         return dist / self.energy_slice_count
 
 
 
-    def estimateLL(self, verbose=False):
+    def estimateLL(self, new_samples=None, verbose=False):
         log_prob = torch.autograd.Variable(torch.zeros((1,)).cuda())
 
         correct = 0
@@ -516,9 +508,18 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
         if verbose:
             print("Estimating log likelihood")
         for i, r in enumerate(self.R):
+
+
             ## Subsampling true relations
-            samples = self.get_samples_for_B(i)
-            #pos_uis, pos_vis, _, pos_ws = zip(*filter(lambda x:x[2],samples))
+            if not new_samples:
+                samples = self.get_samples_for_B(i)
+            else:
+                samples = new_samples[self.relation_names[i]]
+                if not samples:
+                    continue
+
+
+
             neg_uis, neg_vis, _, neg_ws = zip(*filter(lambda x: not x[2], samples))
             uis, vis, rs, ws = zip(*samples)
 
@@ -533,11 +534,21 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
             act_l2 = (act**2).sum(dim=1)
             # act_l1 = torch.abs(act).sum(dim=1)
 
-
             # add something separate for co oc
 
-            #log_prob += torch.sum(-act_l2 * y_true_var * ws_var) + torch.sum(torch.log(1 - torch.exp(-act_l2) + 1e-7) * (1 - y_true_var) * ws_var)
-            #+ self.negative_weight * torch.sum(torch.min(torch.zeros_like(act_l1), act_l1 - self.hinge_threshold) * (1 - y_true_var) * ws_var)
+            pure_ll = torch.sum(-act_l2 * y_true_var * ws_var) + torch.sum(
+                torch.log(1 - torch.exp(-act_l2) + 1e-7) * (1 - y_true_var) * ws_var)
+
+            pure_ll = pure_ll / y_true.shape[0]
+
+            #pure_ll = torch.mean(-act_l2 * y_true_var * ws_var) + torch.mean(act_l2 * (1 - y_true_var) * ws_var)
+
+
+          #  loss_fn = torch.nn.SoftMarginLoss()
+          #  pure_ll = loss_fn(act)
+
+            log_prob += pure_ll
+            #         + self.negative_weight * torch.sum(torch.min(torch.zeros_like(act_l1), act_l1 - self.hinge_threshold) * (1 - y_true_var) * ws_var)
 
            # pdb.set_trace()
             ED = self.energyDistance(act_neg)
@@ -545,7 +556,9 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
             #pdb.set_trace()
             log_prob -= ED * self.energy_weight
 
-            #log_prob -= self.lambdaB * 0.5 * (self.B[i] ** 2).sum()
+
+            ll_reg_B = self.lambdaB * 0.5 * (self.Btens[i] ** 2).sum()
+            log_prob -= ll_reg_B
 
             cur_correct = np.corrcoef(-act_l2.data.cpu().numpy(), y_true.cpu().numpy())[0, 1]  # correlation
             if verbose:
@@ -555,13 +568,14 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
                 cur_correct = 1
 
             correct += cur_correct
-        #log_prob -= self.lambdaUV * 0.5 * ((self.U ** 2).sum() + (self.V ** 2).sum())
+        ll_reg_UV = self.lambdaUV * 0.5 * ((self.U ** 2).sum() + (self.V ** 2).sum())
+        log_prob -= ll_reg_UV
         if verbose:
             print("Log prob: {}, accuracy: {}".format(log_prob, correct / len(self.R)))
-        return log_prob, correct / len(self.R)
+        return log_prob, correct / len(self.R), (pure_ll, ED, ll_reg_B, ll_reg_UV)
 
     def __str__(self):
-        path = "{}_vocab_size{}_dim{}_lambdaB{}UV{}_logit{}_coId{}_sampling{}_pos{}_B{}_UniRange{}_EnergyWeight{}_Slices{},"
+        path = "{}_vocab_size{}_dim{}_lambdaB{}UV{}_logit{}_coId{}_sampling{}_pos{}_B{}_UniRange{}_EnergyWeight{}_Slices{}"
         return path.format(self.modelName, self.vocab_size,  self.emb_size, self.lambdaB,
                            self.lambdaUV,
                            self.logistic, self.co_is_identity, self.sampling_scheme,
@@ -587,14 +601,8 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
             U1 = self.U
             V1 = self.V
 
-        #return U1, V1
-
         Us = U1[us_ind]
         Vs = V1[vs_ind]
-
-       # print(Us.shape)
-       # print(self.Btens[r_ind].shape)
-       # print(Vs.shape)
 
         act = ((Us @ self.Btens[r_ind]) * Vs.t()[:, :, None]).sum(dim=0) # change to Btens size (2, 51, 51)
 

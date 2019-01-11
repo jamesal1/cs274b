@@ -115,126 +115,172 @@ for relation, relation_triples in relation_triples.items():
 #relation_triples_train["co"] = cooccurrence_triples
 #relation_triples_test["co"] = cooccurrence_triples
 
-### load and create the model
-mt = ModelDistMatch1dUniform(getVocab(settings.vocab_size), relation_triples_train, embedding_dimension=settings.embedding_dimension, lambdaB=settings.reg_B, lambdaUV=settings.reg_B,
-                logistic=settings.logistic, co_is_identity=settings.co_is_identity,
-                sampling_scheme=settings.sampling_scheme,
-                proportion_positive=settings.proportion_positive, sample_size_B=settings.sample_size_B)
-
-path = "evaluation/{}_test{}_seed{}/"
-path = path.format(str(mt),settings.test_frac, settings.seed)
-pathlib.Path(path).mkdir(parents=True, exist_ok=True)
-
-
-### train the model
-optimizer = torch.optim.Adam(mt.parameters())
-lls = []
-accs = []
-
-print_every = 50
-
-
-for i in range(0):#range(settings.epochs):
-
-    if i % print_every == 0:
-        print("#######################")
-        print("Update {}".format(i))
-        print("#######################")
-        ### evaluate performance, save the report in a readable form
-        getAUC(mt, relation_triples_train, relation_triples_test, path, i)
-
-    ll, acc = mt.estimateLL(verbose= (i % print_every == 0))
-    lls.append(ll.data)
-    accs.append(acc)
-    nll = -ll
-    nll.backward()
-    optimizer.step()
-    optimizer.zero_grad()
-    if i % print_every == 0:
-        print("#######################")
-        print("Update {}".format(i))
-        print("#######################")
-mt.save(path+"model.pkl")
-
-### Print likelihoods
-fig = plt.figure()
-plt.plot(lls)
-plt.xlabel("iteration")
-plt.ylabel("log likelihood")
-
-plt.savefig(path+"ll.png")
-plt.close(fig)
-
-fig = plt.figure()
-plt.plot(accs)
-plt.xlabel("iteration")
-plt.ylabel("correlation with correct answers")
-plt.savefig(path+"corr.png")
-plt.close(fig)
-
-###
-
-train_acts = []
-test_acts = []
-train_acts_neg = []
-test_acts_neg = []
-
-for i, r in enumerate(mt.relation_names):
-    print(r)
-    if r == "co":
-        continue
-
-    train_acts.extend(mt.getActivations(i, relation_triples_train[r]))
-    test_acts.extend(mt.getActivations(i, relation_triples_test[r]))
-    train_acts_neg.extend(mt.getActivations(i, *getNegativeUVs(relation_triples_train[r])))
-    test_acts_neg.extend(mt.getActivations(i, *getNegativeUVs(relation_triples_test[r])))
-
-## !save settings alongside the model
-bins = np.linspace(-2, 2, 300)
-
-compareHistograms([(train_acts,"train"),(test_acts,"test")],"traintest", path)
-
-## Compare with negatives
-compareHistograms([(train_acts,"train positive"),(train_acts_neg,"train negative")], "train", path)
-compareHistograms([(test_acts,"test positive"),(test_acts_neg,"test negative")], "test", path)
-
-## Compare with negatives for specific relations
-
-for i, r in enumerate(mt.relation_names):
-
-    print(r)
-    if r == "co":
-        continue
-
-
-    train_acts = mt.getActivations(i, relation_triples_train[r])
-    test_acts = mt.getActivations(i, relation_triples_test[r])
-
-    train_acts_neg = mt.getActivations(i, *getNegativeUVs(relation_triples_train[r]))
-    test_acts_neg = mt.getActivations(i, *getNegativeUVs(relation_triples_test[r]))
-    ## Try full negative?
-
-    compareHistograms([(train_acts, "train positive"), (train_acts_neg, "train negative")], 'Train_answers_{}'.format(r.split("/")[-1]), path)
-    compareHistograms([(test_acts, "test positive"), (test_acts_neg, "test negative")], 'Test_answers_{}'.format(r.split("/")[-1]), path)
-
+#
+# ### load and create the model
+# mt = ModelDistMatch1dUniform(getVocab(settings.vocab_size), relation_triples_train, embedding_dimension=settings.embedding_dimension, lambdaB=settings.reg_B, lambdaUV=settings.reg_B,
+#                 logistic=settings.logistic, co_is_identity=settings.co_is_identity,
+#                 sampling_scheme=settings.sampling_scheme,
+#                 proportion_positive=settings.proportion_positive, sample_size_B=settings.sample_size_B)
+#
+# path = "evaluation/{}_test{}_seed{}/"
+# path = path.format(str(mt),settings.test_frac, settings.seed)
+# pathlib.Path(path).mkdir(parents=True, exist_ok=True)
+#
+#
+# ### train the model
+# optimizer = torch.optim.Adam(mt.parameters())
+# lls = []
+# accs = []
+#
+# print_every = 50
+#
+#
+# for i in range(0):#range(settings.epochs):
+#
+#     if i % print_every == 0:
+#         print("#######################")
+#         print("Update {}".format(i))
+#         print("#######################")
+#         ### evaluate performance, save the report in a readable form
+#         getAUC(mt, relation_triples_train, relation_triples_test, path, i)
+#
+#     ll, acc = mt.estimateLL(verbose= (i % print_every == 0))
+#     lls.append(ll.data)
+#     accs.append(acc)
+#     nll = -ll
+#     nll.backward()
+#     optimizer.step()
+#     optimizer.zero_grad()
+#     if i % print_every == 0:
+#         print("#######################")
+#         print("Update {}".format(i))
+#         print("#######################")
+# mt.save(path+"model.pkl")
+#
+# ### Print likelihoods
+# fig = plt.figure()
+# plt.plot(lls)
+# plt.xlabel("iteration")
+# plt.ylabel("log likelihood")
+#
+# plt.savefig(path+"ll.png")
+# plt.close(fig)
+#
+# fig = plt.figure()
+# plt.plot(accs)
+# plt.xlabel("iteration")
+# plt.ylabel("correlation with correct answers")
+# plt.savefig(path+"corr.png")
+# plt.close(fig)
 
 ###
+#
+# train_acts = []
+# test_acts = []
+# train_acts_neg = []
+# test_acts_neg = []
+#
+# for i, r in enumerate(mt.relation_names):
+#     print(r)
+#     if r == "co":
+#         continue
+#
+#     train_acts.extend(mt.getActivations(i, relation_triples_train[r]))
+#     test_acts.extend(mt.getActivations(i, relation_triples_test[r]))
+#     train_acts_neg.extend(mt.getActivations(i, *getNegativeUVs(relation_triples_train[r])))
+#     test_acts_neg.extend(mt.getActivations(i, *getNegativeUVs(relation_triples_test[r])))
+#
+# ## !save settings alongside the model
+# bins = np.linspace(-2, 2, 300)
+#
+# compareHistograms([(train_acts,"train"),(test_acts,"test")],"traintest", path)
+#
+# ## Compare with negatives
+# compareHistograms([(train_acts,"train positive"),(train_acts_neg,"train negative")], "train", path)
+# compareHistograms([(test_acts,"test positive"),(test_acts_neg,"test negative")], "test", path)
+#
+# ## Compare with negatives for specific relations
+#
+# for i, r in enumerate(mt.relation_names):
+#
+#     print(r)
+#     if r == "co":
+#         continue
+#
+#
+#     train_acts = mt.getActivations(i, relation_triples_train[r])
+#     test_acts = mt.getActivations(i, relation_triples_test[r])
+#
+#     train_acts_neg = mt.getActivations(i, *getNegativeUVs(relation_triples_train[r]))
+#     test_acts_neg = mt.getActivations(i, *getNegativeUVs(relation_triples_test[r]))
+#     ## Try full negative?
+#
+#     compareHistograms([(train_acts, "train positive"), (train_acts_neg, "train negative")], 'Train_answers_{}'.format(r.split("/")[-1]), path)
+#     compareHistograms([(test_acts, "test positive"), (test_acts_neg, "test negative")], 'Test_answers_{}'.format(r.split("/")[-1]), path)
+#
+#
+# ###
 
 mt2d = ModelDistMatch2dUniform(getVocab(settings.vocab_size), relation_triples_train, embedding_dimension=settings.embedding_dimension, lambdaB=settings.reg_B, lambdaUV=settings.reg_B,
                 logistic=settings.logistic, co_is_identity=settings.co_is_identity,
                 sampling_scheme=settings.sampling_scheme,
                 proportion_positive=settings.proportion_positive, sample_size_B=settings.sample_size_B)
 
-mt2d.forward([1, 2, 3], [4, 5, 6], 1)
+def plot_2d_acts(ax, pos_acts, neg_acts, rel_name):
 
-def plot_2d_acts(ax, pos_acts, neg_acts):
-    all_acts = np.vstack([pos_acts, neg_acts])
-    colors = np.zeros(all_acts.shape[0])
-    colors[0:pos_acts.shape[0]] = 1
-    scatterplot = ax.scatter(all_acts[:, 0], all_acts[:, 1], c=colors)
-    #pdb.set_trace()
-    #scatterplot = ax.hist(all_acts[:, 0])
-    return scatterplot
+   if len(pos_acts) == 0 or len(neg_acts) == 0:
+       return
+
+   all_acts = np.vstack([pos_acts, neg_acts])
+   colors = np.zeros((all_acts.shape[0], 3))
+   colors[0:pos_acts.shape[0], 1] = 1
+   colors[pos_acts.shape[0]:, 0] = 1
+   scatterplot = ax.scatter(all_acts[:, 0], all_acts[:, 1], c=colors, alpha=0.15)
+   ax.set_title(rel_name)
+
+
+   return scatterplot
+
+    # xmin, xmax, ymin, ymax = -3, 3, -3, 3
+    #
+    # fig, ax1 = plt.subplots(1, 1, sharey=True)
+    #
+    # ax1.set_xlabel("x")
+    # ax1.set_ylabel("y")
+    #
+    # generated = all_acts
+    #
+    # xgen, ygen = generated[:, 0], generated[:, 1]
+    #
+    # #pdb.set_trace()
+    #
+    # counts, ybins, xbins, image = ax1.hist2d(xgen, ygen, bins=(50, 50), cmap=plt.cm.Reds, normed=True, range=[[xmin, xmax], [ymin, ymax]])
+    #
+    # #CS = ax1.contourf(X, Y, preds.reshape(X.shape), extent=[xbins.min(), xbins.max(), ybins.min(), ybins.max()],
+    # #                  cmap=plt.cm.BuPu, alpha=0.5)  # linewidths=3,
+    #
+    # #cbar = fig.colorbar(CS)
+    # #cbar.ax.set_ylabel('Discriminator output')
+    #
+    # fig.show()
+
+def plot_2d_act_dists(ax, pos_acts, neg_acts, rel_name):
+
+   if len(pos_acts) == 0 or len(neg_acts) == 0:
+       return
+
+   all_acts = np.vstack([pos_acts, neg_acts])
+
+   pos_dists = np.sqrt(np.sum(pos_acts**2, 1))
+   neg_dists = np.sqrt(np.sum(neg_acts ** 2, 1))
+
+   hist = ax.hist(pos_dists, density=True, alpha=0.5, facecolor="g", label="Positive")
+   hist2 = ax.hist(neg_dists, density=True, alpha=0.5, facecolor="r", label="Negative")
+   ax.set_title(rel_name)
+
+
+   return ax
+
 
 def create_acts(m, relation_triples_train, relation_triples_test):
 
@@ -247,7 +293,7 @@ def create_acts(m, relation_triples_train, relation_triples_test):
         train_acts_neg = []
         test_acts_neg = []
 
-        print(r)
+        #print(r)
         if r == "co":
            continue
 
@@ -258,25 +304,59 @@ def create_acts(m, relation_triples_train, relation_triples_test):
 
         train_acts, test_acts, train_acts_neg, test_acts_neg = map(np.array, [train_acts, test_acts, train_acts_neg, test_acts_neg])
 
+        fig, ax = plt.subplots()
+        scatter = plot_2d_acts(ax, test_acts, test_acts_neg, r)
+        fig.show()
 
         fig, ax = plt.subplots()
-        plot_2d_acts(ax, train_acts, train_acts_neg)
+        scatter = plot_2d_act_dists(ax, test_acts, test_acts_neg, r)
         fig.show()
 
        # return
 
     return train_acts, test_acts, train_acts_neg, test_acts_neg
 
-#train_acts, test_acts, train_acts_neg, test_acts_neg = map(np.array, create_acts(mt2d, relation_triples_train, relation_triples_test))
-lp, corr = mt2d.estimateLL()
-#train_acts, test_acts, train_acts_neg, test_acts_neg = create_acts(mt2d, relation_triples_train, relation_triples_test)
+def append_weight_to_triples(relation_triples):
+    # simply appends 1 to every triple (since log likelihood requires weights
 
-### train the model
-optimizer = torch.optim.Adam(mt2d.parameters())
-lls = [lp]
+    return {k: list(map(lambda triple: triple + (1,), v)) for k, v in relation_triples.items()}
+
+
+## Initial evaluations for the quantities of interest
+lp, corr, detail = mt2d.estimateLL()
+pure_lls, EDs, reg_Bs, reg_UVs = map(lambda x: [x.data.cpu().numpy()], detail)
+lls = [lp.data.cpu().numpy()]
 accs = [corr]
 
-for i in range(300):#range(settings.epochs):
+## Test set
+relation_quadruples_test = append_weight_to_triples(relation_triples_test)
+
+for k, v in relation_quadruples_test.items():
+    num_neg_elts = len(v) * 2
+    us = np.random.randint(mt2d.vocab_size, size=num_neg_elts)
+    vs = np.random.randint(mt2d.vocab_size, size=num_neg_elts)
+    ws = (1, ) * len(us)
+    rs = (0, ) * len(us)
+
+    quadruples = list(zip(us, vs, rs, ws))
+    v.extend(quadruples)
+
+lp_test, corr_test, detail_test = mt2d.estimateLL(relation_quadruples_test)
+pure_lls_test, EDs_test, reg_Bs_test, reg_UVs_test = map(lambda x: [x.data.cpu().numpy()], detail_test)
+lls_test = [lp_test.data.cpu().numpy()]
+accs_test = [corr_test]
+
+del lp_test
+del corr_test
+del detail_test
+
+optimizer = torch.optim.Adam(mt2d.parameters())
+
+### train the model
+
+print_every = 50
+
+for i in range(10000):#range(settings.epochs):
 
     if i % print_every == 0:
         print("#######################")
@@ -285,18 +365,52 @@ for i in range(300):#range(settings.epochs):
         ### evaluate performance, save the report in a readable form
 ##        getAUC(mt, relation_triples_train, relation_triples_test, path, i)
 
-    ll, acc = mt2d.estimateLL(verbose= (i % print_every == 0))
+    ll, acc, detail = mt2d.estimateLL(verbose=(i % print_every == 0))
     lls.append(ll.data.cpu().numpy())
     accs.append(acc)
     nll = -ll
     nll.backward()
 
+    for history, new_el in zip((pure_lls, EDs, reg_Bs, reg_UVs), map(lambda x: x.data.cpu().numpy(), detail)):
+        history.append(new_el)
+
     optimizer.step()
     optimizer.zero_grad()
+
+    lp_test, corr_test, detail_test = mt2d.estimateLL(new_samples=relation_quadruples_test, verbose=(i % print_every == 0))
+    lls_test.append(lp_test.data.cpu().numpy())
+    accs_test.append(corr_test)
+
+    for history, new_el in zip((pure_lls_test, EDs_test, reg_Bs_test, reg_UVs_test), map(lambda x: x.data.cpu().numpy(), detail_test)):
+        history.append(new_el)
+
+    del lp_test
+    del corr_test
+    del detail_test
+
     if i % print_every == 0:
         print("#######################")
         print("Update {}".format(i))
         print("#######################")
 
-
 create_acts(mt2d, relation_triples_train, relation_triples_test)
+
+def print_likelihoods(pure_lls, EDs, reg_Bs, reg_UVs):
+
+    fig, ax = plt.subplots()
+
+    step_num = list(range(len(pure_lls)))
+    ax.plot(step_num, pure_lls, label="Model likelihood")
+    ax.plot(step_num, EDs, label="Energy distance")
+    ax.plot(step_num, reg_Bs, label="Regularization cost: B matrices")
+    ax.plot(step_num, reg_UVs, label="Regularization cost: UV")
+
+    plt.xlabel("Update number")
+    plt.ylabel("log likelihood")
+    plt.legend()
+
+
+    return fig, ax
+
+fig, ax = print_likelihoods(pure_lls, EDs, reg_Bs, reg_UVs)
+fig.show()

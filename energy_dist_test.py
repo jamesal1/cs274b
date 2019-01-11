@@ -17,18 +17,15 @@ def energyDistance(activations, dist=None):
         tmp = torch.rand((dim, 1))-.5
         tmp = tmp / torch.norm(tmp)
         projection = Variable(tmp, requires_grad=False)
-        x_proj, x_arg = torch.sort((x @ projection).flatten())
-        x_prime_proj, x_prime_arg = torch.sort((x_prime @ projection).flatten())
-        y_proj, y_arg = torch.sort((y @ projection).flatten())
+        x_proj, x_arg = torch.sort(x @ projection, 0)
+        x_prime_proj, x_prime_arg = torch.sort(x_prime @ projection, 0)
+        y_proj, y_arg = torch.sort(y @ projection, 0)
         # print(x_proj)
         # print(y_proj)
         # dist += torch.sum((y_proj - x_prime_proj) ** 2) + torch.sum((y_proj - x_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
         dist += 2 * torch.sum((y_proj - x_proj) ** 2) - torch.sum((x_proj - x_prime_proj) ** 2)
 
     return dist / 5
-
-
-
 
 
 a = Variable(torch.rand(40,2)-.5,requires_grad=True)
@@ -42,7 +39,7 @@ for i in range(1000):
 print(a.t())
 from matplotlib import pyplot as plt
 
-at=a.t().detach().numpy()
+at=a.t().detach().data.numpy()
 plt.scatter(at[0],at[1])
 plt.savefig("energy_test.png")
 plt.close()
