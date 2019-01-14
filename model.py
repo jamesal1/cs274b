@@ -587,7 +587,7 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
         )
 
     def getScores(self, rel, *args):
-        return [-(x**2).sum(dim=1) for x in self.getActivations(rel, *args)]
+        return [-(x**2).sum() for x in self.getActivations(rel, *args)]
 
 
     def forward(self, us_ind, vs_ind, r_ind):
@@ -607,3 +607,29 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
         act = ((Us @ self.Btens[r_ind]) * Vs.t()[:, :, None]).sum(dim=0) # change to Btens size (2, 51, 51)
 
         return act
+
+
+    def findBest(self, r, w, top=20, restrict=True):
+
+        if restrict:
+            possible_us = self.RposU[r]  # change? why restrict?
+            possible_vs = self.RposV[r]
+        else:
+            possible_us = list(range(self.vocab_size))
+            possible_vs = list(range(self.vocab_size))
+
+        w = self.w_to_i[w]
+
+        acts_u = self.forward(possible_us, (w, ), r) # Check if r is ind or name. Change to appropriate index if needed
+        acts_v = self.forward((w,), possible_vs, r)  # Check if r is ind or name. Change to appropriate index if needed
+
+        acts_u = (acts_u ** 2).sum(dim=1).data.cpu().numpu()
+        acts_v = (acts_v ** 2).sum(dim=1).data.cpu().numpu()
+
+        ubest = [(self.i_to_w[x], score) for x, score in zip(np.argsort(acts_u),
+                                                             np.sort(acts_u)) if x in possible_us][:top]
+
+        vbest = [(self.i_to_w[x], score) for x, score in zip(np.argsort(acts_v),
+                                                             np.sort(acts_v)) if x in possible_vs][:top]
+
+        return ubest, vbest

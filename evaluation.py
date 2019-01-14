@@ -38,41 +38,65 @@ def compareHistograms(activations, title, path):
     plt.close(fig)
 
 def getAUC(model, relation_triples_train, relation_triples_test, path, iteration=0):
-    with open(path + "AUC_update_{}.csv".format(iteration),"w") as f:
-        f.write("relation,train_AUC,test_AUC\n")
+
+    if iteration == 0:
+        with open(path + "AUC.csv".format(iteration), "w") as f:
+            f.write("iteration")
+            for r in model.relation_names:
+                f.write(",{}_train_AUC,{}_test_AUC".format(r, r))
+
+            f.write("\n")
+
+    with open(path + "AUC.csv".format(iteration), "a") as f:
+        f.write(str(iteration))
+        #f.write("relation,train_AUC,test_AUC\n")
 
         for i, r in enumerate(model.relation_names):
+
+           # print("Calculating AUC for relation " + r)
             if r == "co":
                 continue
-            scores_pos_train = model.getScores(i, relation_triples_train[r])
-            scores_pos_test = model.getScores(i, relation_triples_test[r])
 
+           # if relation_triples_train[r]:
+            scores_pos_train = model.getScores(i, relation_triples_train[r])
             scores_neg_train = model.getScores(i, *getNegativeUVs(relation_triples_train[r]))
-            scores_neg_test = model.getScores(i, *getNegativeUVs(relation_triples_test[r]))
 
             scores_train = np.hstack([scores_pos_train, scores_neg_train])
-            scores_test = np.hstack([scores_pos_test, scores_neg_test])
 
             true_ans_train = np.hstack([np.ones_like(scores_pos_train),
                                         np.zeros_like(scores_neg_train)])
 
-            true_ans_test = np.hstack([np.ones_like(scores_pos_test),
-                                        np.zeros_like(scores_neg_test)])
             try:
                 train_auc = roc_auc_score(true_ans_train, scores_train)
             except ValueError:
-                print("Not enough train data")
                 train_auc = None
+
+            # else:
+            #     print("Not enough train data")
+            #     train_auc = None
+
+         #   if relation_triples_test[r]:
+            scores_pos_test = model.getScores(i, relation_triples_test[r])
+            scores_neg_test = model.getScores(i, *getNegativeUVs(relation_triples_test[r]))
+
+            scores_test = np.hstack([scores_pos_test, scores_neg_test])
+
+
+            true_ans_test = np.hstack([np.ones_like(scores_pos_test),
+                                        np.zeros_like(scores_neg_test)])
+
 
             try:
                 test_auc = roc_auc_score(true_ans_test, scores_test)
             except ValueError:
-                print("Not enough test data")
                 test_auc = None
+            # else:
+            #     test_auc = None
 
-            f.write("{},{},{}\n".format(r, train_auc, test_auc))
+            f.write(",{},{}".format(train_auc, test_auc))
             print(r, train_auc, test_auc)
             #return train_auc, test_auc
+        f.write("\n")
 
 
 ### Load cached matrices from file, or create them
@@ -322,6 +346,11 @@ def append_weight_to_triples(relation_triples):
     return {k: list(map(lambda triple: triple + (1,), v)) for k, v in relation_triples.items()}
 
 
+
+##
+
+path = "./TemporaryReport12_Jan_2019/"
+
 ## Initial evaluations for the quantities of interest
 lp, corr, detail = mt2d.estimateLL()
 pure_lls, EDs, reg_Bs, reg_UVs = map(lambda x: [x.data.cpu().numpy()], detail)
@@ -356,14 +385,16 @@ optimizer = torch.optim.Adam(mt2d.parameters())
 
 print_every = 50
 
-for i in range(10000):#range(settings.epochs):
+for i in range(100000):#range(settings.epochs):
 
     if i % print_every == 0:
         print("#######################")
         print("Update {}".format(i))
         print("#######################")
         ### evaluate performance, save the report in a readable form
+        getAUC(mt2d, relation_triples_train, relation_triples_test, path, i)
 ##        getAUC(mt, relation_triples_train, relation_triples_test, path, i)
+        mt2d.save(path + str(mt2d) + "_update_{}.model.pkl".format(i))
 
     ll, acc, detail = mt2d.estimateLL(verbose=(i % print_every == 0))
     lls.append(ll.data.cpu().numpy())
@@ -376,6 +407,10 @@ for i in range(10000):#range(settings.epochs):
 
     optimizer.step()
     optimizer.zero_grad()
+
+    del ll
+    del acc
+    del detail
 
     lp_test, corr_test, detail_test = mt2d.estimateLL(new_samples=relation_quadruples_test, verbose=(i % print_every == 0))
     lls_test.append(lp_test.data.cpu().numpy())
@@ -395,7 +430,7 @@ for i in range(10000):#range(settings.epochs):
 
 create_acts(mt2d, relation_triples_train, relation_triples_test)
 
-def print_likelihoods(pure_lls, EDs, reg_Bs, reg_UVs):
+def print_likelihoods(pure_lls, EDs, reg_Bs, reg_UVs, title=None):
 
     fig, ax = plt.subplots()
 
@@ -405,6 +440,9 @@ def print_likelihoods(pure_lls, EDs, reg_Bs, reg_UVs):
     ax.plot(step_num, reg_Bs, label="Regularization cost: B matrices")
     ax.plot(step_num, reg_UVs, label="Regularization cost: UV")
 
+    if title:
+        ax.set_title(title)
+
     plt.xlabel("Update number")
     plt.ylabel("log likelihood")
     plt.legend()
@@ -412,5 +450,9 @@ def print_likelihoods(pure_lls, EDs, reg_Bs, reg_UVs):
 
     return fig, ax
 
-fig, ax = print_likelihoods(pure_lls, EDs, reg_Bs, reg_UVs)
+fig, ax = print_likelihoods(pure_lls, EDs, reg_Bs, reg_UVs, 'Train data')
 fig.show()
+
+fig, ax = print_likelihoods(pure_lls_test, EDs_test, reg_Bs_test, reg_UVs_test, 'Test data')
+fig.show()
+
