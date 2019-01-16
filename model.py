@@ -481,7 +481,7 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
             x_prime_proj, x_prime_arg = torch.sort(x_prime @ projection, 0)
             y_proj, y_arg = torch.sort(y @ projection, 0)
 
-            dist += 2 * torch.mean((x_proj - y_proj) ** 2) - torch.mean((x_proj - x_prime_proj) ** 2)
+            dist += torch.mean((x_proj - y_proj) ** 2) + torch.sum((y_proj - x_prime_proj) ** 2) - torch.mean((x_proj - x_prime_proj) ** 2)
 
             # Quick hack to add the orthogonality part (for 2d only)
 
@@ -494,7 +494,7 @@ class ModelDistMatch2dUniform(ModelDistMatch1dUniform):
             x_prime_proj, x_prime_arg = torch.sort(x_prime @ projection, 0)
             y_proj, y_arg = torch.sort(y @ projection, 0)
 
-            dist += torch.mean((x_proj - y_proj) ** 2) - torch.mean((x_proj - x_prime_proj) ** 2)
+            dist += torch.mean((x_proj - y_proj) ** 2) + torch.mean((x_prime_proj - y_proj) ** 2)  - torch.mean((x_proj - x_prime_proj) ** 2)
 
         return dist / self.energy_slice_count
 

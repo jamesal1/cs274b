@@ -385,7 +385,10 @@ optimizer = torch.optim.Adam(mt2d.parameters())
 
 print_every = 50
 
-for i in range(100000):#range(settings.epochs):
+# For best results - change energy weight back to 1, remove 2 * factor from the energy distance
+
+
+for i in range(30000, 40000):#range(settings.epochs):
 
     if i % print_every == 0:
         print("#######################")
@@ -449,6 +452,9 @@ def print_likelihoods(pure_lls, EDs, reg_Bs, reg_UVs, title=None):
 
 
     return fig, ax
+
+# with open(path + "ModelDistMatch2dUniform_vocab_size7000_dim50_lambdaB0.001UV0.001_logitFalse_coIdFalse_samplingproportional_pos0.5_B500_UniRange5_EnergyWeight1_Slices1_update_5350.model.pkl", "r") as f:
+#     mt2d = pkl.load(f)
 
 fig, ax = print_likelihoods(pure_lls, EDs, reg_Bs, reg_UVs, 'Train data')
 fig.show()
